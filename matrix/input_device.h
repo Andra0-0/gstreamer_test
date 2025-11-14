@@ -6,13 +6,17 @@ extern "C" {
 #include <glib.h>
 }
 
+/**
+ * InputDevice interface class
+ */
 class InputDevice {
 public:
   InputDevice();
-  ~InputDevice();
+
+  virtual ~InputDevice();
 
 private:
-  gint id;
+
 };
 
 #endif // _INPUT_DEVICE_H_
