@@ -1,6 +1,12 @@
 #include "media_matrix.h"
 
+#include <cstddef>
+#include <stddef.h>
+#include <vector>
+
 #include "debug.h"
+#include "input_impl_v4l2.h"
+#include "input_impl_file.h"
 
 std::mutex MediaMatrix::inslock_;
 std::shared_ptr<MediaMatrix> MediaMatrix::instance_ = nullptr;
@@ -24,26 +30,56 @@ gint MediaMatrix::init(int argc, char *argv[])
     /* Initialize GStreamer */
     gst_init(&argc, &argv);
 
-    /* Create the elements */
-    source_ = gst_element_factory_make ("videotestsrc", "source");
-    filter_ = gst_element_factory_make ("vertigotv", "filter");
-    sink_ = gst_element_factory_make ("autovideosink", "sink");
-
     /* Create the empty pipeline */
-    pipeline_ = gst_pipeline_new ("test-pipeline");
+    pipeline_ = gst_pipeline_new ("matrix-pipeline");
+    /* Create compositor and sink */
+    mix_compositor_ = gst_element_factory_make ("compositor", "video-compositor");
+    ALOG_BREAK_IF(!mix_compositor_);
 
-    ALOG_BREAK_IF(!pipeline_ || !source_ || !sink_);
+    sink_ = gst_element_factory_make ("kmssink", "video-sink");
+    ALOG_BREAK_IF(!sink_);
 
-    /* Build the pipeline */
-    gst_bin_add_many(GST_BIN(pipeline_), source_, filter_, sink_, NULL);
-    if (gst_element_link_many(source_, filter_, sink_, NULL) != TRUE) {
-      ALOGD("Elements could not be linked.");
+    /* Create input objects and their bins */
+    InputIntfPtr v4l2in = std::make_shared<InputImplV4L2>("/dev/video0", 4);
+    // InputIntfPtr filein = std::make_shared<InputImplFile>("/home/cat/test/sample_2560x1440.mp4");
+
+    inputs_.push_back(v4l2in);
+    // inputs_.push_back(filein);
+
+    /* Modify properties */
+    g_object_set(G_OBJECT(mix_compositor_), // compositor
+            "background", 1, // black background
+            NULL);
+    g_object_set (G_OBJECT(sink_), // kmssink
+            "sync", FALSE,
+            "skip-vsync", TRUE,
+            NULL);
+    g_object_set(G_OBJECT(mix_compositor_), // compositor
+            "background", 1, // black background
+            NULL);
+    g_object_set (G_OBJECT(sink_), // kmssink
+            "sync", FALSE,
+            "skip-vsync", TRUE,
+            NULL);
+
+    /* Build the pipeline: add input bins, compositor and sink */
+    GstElement *v4l2_bin = v4l2in->bin();
+    // GstElement *file_bin = filein->bin();
+
+    gst_bin_add_many(GST_BIN(pipeline_), v4l2_bin, /*file_bin,*/ mix_compositor_, sink_, NULL);
+
+    if (gst_element_link_many(mix_compositor_, sink_, NULL) != TRUE) {
+      ALOGD("Elements could not be linked: mix_compositor_ -> sink_");
       gst_object_unref (pipeline_);
       break;
     }
 
-    /* Modify the source's properties */
-    g_object_set (source_, "pattern", 0, NULL);
+    /* Setup compositor pads and link inputs */
+    if (setupCompositorPads() != 0) {
+      ALOGD("Failed to setup compositor pads");
+      gst_object_unref(pipeline_);
+      break;
+    }
 
     /* Start playing */
     ret = gst_element_set_state (pipeline_, GST_STATE_PLAYING);
@@ -111,5 +147,47 @@ gint MediaMatrix::join()
     }
     gst_message_unref (msg);
   }
+  return 0;
+}
+
+gint MediaMatrix::setupCompositorPads()
+{
+  if (inputs_.empty()) return -1;
+
+  for (int i = 0; i < inputs_.size(); ++i) {
+    GstPad *sink_pad = gst_element_get_request_pad(mix_compositor_, "sink_%u");
+    if (!sink_pad) {
+      ALOGD("Failed to get request pad from compositor");
+      return -1;
+    }
+
+    // Simple layout: two columns side-by-side for first two streams
+    if (i == 0) {
+      g_object_set(sink_pad, "xpos", 0, "ypos", 0, "width", 1920, "height", 1080, NULL);
+    } else if (i == 1) {
+      g_object_set(sink_pad, "xpos", 960, "ypos", 0, "width", 960, "height", 1080, NULL);
+    } else {
+      // fallback place subsequent streams at 0,0 with small size
+      g_object_set(sink_pad, "xpos", 0, "ypos", 0, "width", 320, "height", 240, NULL);
+    }
+
+    GstPad *src_pad = inputs_[i]->src_pad();
+    if (!src_pad) {
+      ALOGD("Failed to get src pad from input %zu", i);
+      gst_object_unref(sink_pad);
+      return -1;
+    }
+
+    if (gst_pad_link(src_pad, sink_pad) != GST_PAD_LINK_OK) {
+      ALOGD("Failed to link input %zu to compositor sink", i);
+      gst_object_unref(sink_pad);
+      gst_object_unref(src_pad);
+      return -1;
+    }
+
+    gst_object_unref(sink_pad);
+    gst_object_unref(src_pad);
+  }
+
   return 0;
 }
