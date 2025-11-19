@@ -4,8 +4,10 @@
 #include <mutex>
 #include <memory>
 #include <vector>
+#include <atomic>
 
 #include "input_intf.h"
+#include "output_intf.h"
 
 #define MEDIA_MATRIX_DOT_DIR "./dot"
 
@@ -35,13 +37,16 @@ protected:
 private:
   static std::mutex inslock_;
   static std::shared_ptr<MediaMatrix> instance_;
+  std::atomic<bool> exit_pending_;
 
   GstElement *pipeline_;
   GstElement *mix_compositor_;
-  GstElement *sink_;
+  // GstElement *sink_;
 
   // Inputs encapsulated as classes; each input provides a GstBin with a "src" pad
   std::vector<InputIntfPtr> inputs_;
+
+  std::vector<OutputIntfPtr> outputs_;
 
   GstBus *bus_;
 };

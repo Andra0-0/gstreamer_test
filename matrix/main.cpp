@@ -4,10 +4,9 @@
 #include "media_matrix.h"
 #include "debug.h"
 
-static void handle_signal(int sig) {
-  ALOGD("Received signal %d, exiting...", sig);
+static void handle_signal(int /*sig*/) {
+  /* Only set an atomic flag here — do not call non-async-signal-safe functions. */
   MediaMatrix::instance()->deinit();
-  exit(0);
 }
 
 int main(int argc, char *argv[]) {

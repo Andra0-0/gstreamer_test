@@ -37,6 +37,9 @@ InputImplV4L2::InputImplV4L2(const std::string &device, int io_mode)
     capsfilter_ = gst_element_factory_make("capsfilter", "InputV4L2Caps");
     ALOG_BREAK_IF(!capsfilter_);
 
+    tee_ = gst_element_factory_make("tee", "InputV4L2Tee");
+    ALOG_BREAK_IF(!tee_);
+
     queue_ = gst_element_factory_make("queue", "InputV4L2Queue");
     ALOG_BREAK_IF(!queue_);
 
@@ -45,13 +48,13 @@ InputImplV4L2::InputImplV4L2(const std::string &device, int io_mode)
             "io-mode", 4,
             NULL);
     g_object_set(G_OBJECT(queue_),
-            "max-size-buffers", 10,
+            "max-size-buffers", 50,
             "max-size-bytes", 0,
             "max-size-time", 0,
             "leaky", 2,
             NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
-            "format", G_TYPE_STRING, "NV12",
+            "format", G_TYPE_STRING, "BGR",
             "width", G_TYPE_INT, 1920,
             "height", G_TYPE_INT, 1080,
             "framerate", GST_TYPE_FRACTION, 30, 1,
@@ -64,19 +67,25 @@ InputImplV4L2::InputImplV4L2(const std::string &device, int io_mode)
     }
 
     /* Link with capsfilter to constrain upstream negotiation: v4l2src -> capsfilter -> queue -> videoconvert */
-    gst_bin_add_many(GST_BIN(bin_), source_, convert_, capsfilter_, queue_, NULL);
-    if (!gst_element_link_many(source_, convert_, capsfilter_, queue_, NULL)) {
+    gst_bin_add_many(GST_BIN(bin_), source_, convert_, capsfilter_, tee_, queue_, NULL);
+    if (!gst_element_link_many(source_, convert_, capsfilter_, tee_, NULL)) {
       ALOGD("Failed to link v4l2src -> capsfilter -> queue -> videoconvert");
     }
 
-    /* Add probes on src pads to verify buffer flow (helps debug freezes) */
-    /* create ghost pad from the convert's src (final output of this bin) */
-    GstPad *pad_conv = gst_element_get_static_pad(queue_, "src");
-    if (pad_conv) {
-      // gst_pad_add_probe(pad_conv, GST_PAD_PROBE_TYPE_BUFFER, pad_probe_log_cb, this, NULL);
-      GstPad *ghost = gst_ghost_pad_new("src", pad_conv);
+    GstPad *tee_src_pad = gst_element_get_request_pad(tee_, "src_%u");
+    GstPad *queue_sink_pad = gst_element_get_static_pad(queue_, "sink");
+    if (gst_pad_link(tee_src_pad, queue_sink_pad) != GST_PAD_LINK_OK) {
+      ALOGD("Failed to link tee src pad to queue sink pad");
+    }
+    gst_object_unref(tee_src_pad);
+    gst_object_unref(queue_sink_pad);
+
+    // 创建ghost pad作为这个bin的最终输出
+    GstPad *pad = gst_element_get_static_pad(queue_, "src");
+    if (pad) {
+      GstPad *ghost = gst_ghost_pad_new("src", pad);
       gst_element_add_pad(bin_, ghost);
-      gst_object_unref(pad_conv);
+      gst_object_unref(pad);
     } else {
       ALOGD("Failed to get convert src pad");
     }

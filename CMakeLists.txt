@@ -24,6 +24,7 @@ pkg_check_modules(DEPS REQUIRED
 
 # 添加头文件搜索路径
 include_directories(
+  /usr/include/drm
   ${CMAKE_SOURCE_DIR}/matrix
   ${DEPS_INCLUDE_DIRS}
 )
@@ -71,3 +72,4 @@ include_directories(
 # )
 
 add_subdirectory(matrix)
+add_subdirectory(rgavideoconvert)

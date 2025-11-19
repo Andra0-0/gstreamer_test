@@ -20,6 +20,7 @@ private:
   GstElement *source_;
   GstElement *capsfilter_;
   GstElement *convert_;
+  GstElement *tee_;
   GstElement *queue_;
 };
 
