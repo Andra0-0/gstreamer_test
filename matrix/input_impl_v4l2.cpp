@@ -32,6 +32,8 @@ InputImplV4L2::InputImplV4L2(const std::string &device, int io_mode)
     ALOG_BREAK_IF(!source_);
 
     convert_ = gst_element_factory_make("videoconvert", "InputV4L2Convert");
+    /*Debug*/
+    // convert_ = gst_element_factory_make("rgavideoconvert", "InputV4L2Convert");
     ALOG_BREAK_IF(!convert_);
 
     capsfilter_ = gst_element_factory_make("capsfilter", "InputV4L2Caps");
@@ -108,9 +110,9 @@ InputImplV4L2::InputImplV4L2(const std::string &device, int io_mode)
 
 InputImplV4L2::~InputImplV4L2()
 {
-  if (bin_) {
-    gst_object_unref(bin_);
-  }
+  // if (bin_) {
+  //   gst_object_unref(bin_);
+  // }
 }
 
 GstPad* InputImplV4L2::src_pad()

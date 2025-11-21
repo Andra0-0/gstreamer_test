@@ -31,6 +31,13 @@ public:
 
   gint join();
 
+  void exit_pending(bool wait=false) {
+    exit_pending_ = true;
+    if (wait) {
+      // TODO
+    }
+  }
+
 protected:
   gint setupCompositorPads();
 

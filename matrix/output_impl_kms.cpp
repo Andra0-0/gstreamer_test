@@ -72,6 +72,8 @@ OutputImplKms::OutputImplKms(hdmi_tx_port port)
     ALOG_BREAK_IF(!queue_);
 
     convert_ = gst_element_factory_make("videoconvert", "OutputKmsConvert");
+    /*Debug*/
+    // convert_ = gst_element_factory_make("rgavideoconvert", "OutputKmsConvert");
     ALOG_BREAK_IF(!convert_);
 
     capsfilter_ = gst_element_factory_make("capsfilter", "OutputKmsCaps");
@@ -123,10 +125,10 @@ OutputImplKms::OutputImplKms(hdmi_tx_port port)
 
 OutputImplKms::~OutputImplKms()
 {
-  if (bin_) {
-    gst_object_unref(bin_);
-    bin_ = nullptr;
-  }
+  // if (bin_) {
+  //   gst_object_unref(bin_);
+  //   bin_ = nullptr;
+  // }
 }
 
 GstPad* OutputImplKms::sink_pad()

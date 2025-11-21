@@ -12,6 +12,7 @@ set(
   MATRIX_SOURCES
   main.cpp
   media_matrix.cpp
+  input_intf.cpp
   input_impl_file.cpp
   input_impl_v4l2.cpp
   output_impl_kms.cpp

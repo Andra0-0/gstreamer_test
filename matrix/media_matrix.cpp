@@ -20,22 +20,15 @@ MediaMatrix::MediaMatrix()
   g_setenv("GST_VIDEO_CONVERT_ONLY_RGA3", "1", TRUE);
 
   // debug 环境变量
-  g_setenv("GST_DEBUG","3", TRUE);
+  // g_setenv("GST_DEBUG","3", TRUE);
+  g_setenv("GST_DEBUG","0,rgavideoconvert:5", TRUE);
   // g_setenv("GST_DEBUG_FILE","/tmp/mmdebug.log", TRUE);
   g_setenv("GST_DEBUG_DUMP_DOT_DIR", MEDIA_MATRIX_DOT_DIR, TRUE);
 }
 
 MediaMatrix::~MediaMatrix()
 {
-  if (bus_ != nullptr) {
-    gst_object_unref(bus_);
-    bus_ = nullptr;
-  }
-  if (pipeline_ != nullptr) {
-    gst_element_set_state(pipeline_, GST_STATE_NULL);
-    gst_object_unref(pipeline_);
-    pipeline_ = nullptr;
-  }
+
 }
 
 gint MediaMatrix::init(int argc, char *argv[])
@@ -56,7 +49,9 @@ gint MediaMatrix::init(int argc, char *argv[])
     // ALOG_BREAK_IF(!sink_);
 
     /* Create input objects and their bins */
-    InputIntfPtr v4l2in = std::make_shared<InputImplV4L2>("/dev/video0", 4);
+    // InputIntfPtr v4l2in = std::make_shared<InputImplV4L2>("/dev/video0", 4);
+    InputIntfPtr v4l2in = InputIntfManager::instance()->create(INPUT_TYPE_V4L2);
+    ALOGD("%s", v4l2in->name());
     // InputIntfPtr filein = std::make_shared<InputImplFile>("/home/cat/test/sample_2560x1440.mp4");
 
     OutputIntfPtr kmsout = std::make_shared<OutputImplKms>(OutputImplKms::HDMI_TX_0);
@@ -135,7 +130,17 @@ gint MediaMatrix::deinit()
   GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_),
       GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-deinit");
 
-  exit_pending_ = true;
+  if (bus_ != nullptr) {
+    gst_object_unref(bus_);
+    bus_ = nullptr;
+  }
+  if (pipeline_ != nullptr) {
+    gst_element_set_state(pipeline_, GST_STATE_NULL);
+    gst_object_unref(pipeline_);
+    pipeline_ = nullptr;
+  }
+  inputs_.clear();
+  outputs_.clear();
   return 0;
 }
 
@@ -178,6 +183,7 @@ gint MediaMatrix::join()
     }
   }
 
+  deinit();
   return 0;
 }
 
@@ -194,7 +200,7 @@ gint MediaMatrix::setupCompositorPads()
 
     // Simple layout: two columns side-by-side for first two streams
     if (i == 0) {
-      g_object_set(sink_pad, "xpos", 0, "ypos", 0, "width", 1920, "height", 1080, NULL);
+      g_object_set(sink_pad, "xpos", 0, "ypos", 0, "width", 960, "height", 1080, NULL);
     } else if (i == 1) {
       g_object_set(sink_pad, "xpos", 960, "ypos", 0, "width", 960, "height", 1080, NULL);
     } else {

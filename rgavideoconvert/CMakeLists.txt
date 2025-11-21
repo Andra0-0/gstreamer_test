@@ -2,7 +2,28 @@ cmake_minimum_required(VERSION 3.10)
 project(rgavideoconvert)
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0 gstreamer-video-1.0)
+pkg_check_modules(GSTREAMER REQUIRED
+  gstreamer-1.0
+  gstreamer-video-1.0
+  gstreamer-allocators-1.0
+)
+
+pkg_check_modules(LIBRGA REQUIRED librga)
+if(NOT LIBRGA_FOUND)
+  find_library(LIBRGA_LIBRARIES
+    NAMES rga
+    PATHS /usr/lib/aarch64-linux-gnu
+  )
+  find_path(LIBRGA_INCLUDE_DIRS
+    NAMES rga.h
+    PATHS /usr/include /usr/include/rga
+  )
+  if(LIBRGA_LIBRARIES AND LIBRGA_INCLUDE_DIRS)
+    set(LIBRGA_FOUND TRUE)
+  else()
+    message(FATAL_ERROR "librga not found")
+  endif()
+endif()
 
 set(
   RGA_VIDEO_CONVERT_HEADERS
@@ -18,14 +39,20 @@ add_library(gstrgavideoconvert SHARED
   ${RGA_VIDEO_CONVERT_SOURCES}
   ${RGA_VIDEO_CONVERT_HEADERS}
 )
-target_compile_features(gstrgavideoconvert PRIVATE cxx_std_11)
+# target_compile_features(gstrgavideoconvert PRIVATE cxx_std_11)
 target_compile_options(gstrgavideoconvert PRIVATE
   -Wall
   -Werror
   -fPIC
 )
-target_include_directories(gstrgavideoconvert PRIVATE ${GSTREAMER_INCLUDE_DIRS})
-target_link_libraries(gstrgavideoconvert ${GSTREAMER_LIBRARIES})
+target_include_directories(gstrgavideoconvert PRIVATE
+  ${GSTREAMER_INCLUDE_DIRS}
+  ${LIBRGA_INCLUDE_DIRS}
+)
+target_link_libraries(gstrgavideoconvert
+  ${GSTREAMER_LIBRARIES}
+  ${LIBRGA_LIBRARIES}
+)
 
 # Install the plugin
 if(DEFINED ENV{GST_PLUGIN_PATH_1_0})

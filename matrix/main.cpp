@@ -6,7 +6,7 @@
 
 static void handle_signal(int /*sig*/) {
   /* Only set an atomic flag here — do not call non-async-signal-safe functions. */
-  MediaMatrix::instance()->deinit();
+  MediaMatrix::instance()->exit_pending();
 }
 
 int main(int argc, char *argv[]) {
