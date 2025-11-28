@@ -5,9 +5,13 @@
 #include <vector>
 
 #include "debug.h"
-#include "input_impl_v4l2.h"
-#include "input_impl_file.h"
+// #include "input_impl_v4l2.h"
+// #include "input_impl_file.h"
+#include "media_input_impl_hdmi.h"
+#include "media_input_module.h"
 #include "output_impl_kms.h"
+
+namespace mmx {
 
 std::mutex MediaMatrix::inslock_;
 std::shared_ptr<MediaMatrix> MediaMatrix::instance_ = nullptr;
@@ -21,9 +25,20 @@ MediaMatrix::MediaMatrix()
 
   // debug 环境变量
   // g_setenv("GST_DEBUG","3", TRUE);
-  g_setenv("GST_DEBUG","0,rgavideoconvert:5", TRUE);
+  g_setenv("GST_DEBUG","3,rgavideoconvert:5", TRUE);
   // g_setenv("GST_DEBUG_FILE","/tmp/mmdebug.log", TRUE);
   g_setenv("GST_DEBUG_DUMP_DOT_DIR", MEDIA_MATRIX_DOT_DIR, TRUE);
+
+  /* Initialize GStreamer */
+  gst_init(NULL, NULL);
+
+  /* Create the empty pipeline */
+  pipeline_ = gst_pipeline_new ("matrix-pipeline");
+  bus_ = gst_element_get_bus (pipeline_);
+
+  // gst_bus_add_signal_watch(bus_);
+  // g_signal_connect(G_OBJECT(bus_), "message::error", (GCallback)on_handle_bus_msg_error, this);
+  // g_signal_connect(G_OBJECT(bus_), "message::eos", (GCallback)on_handle_bus_msg_eos, this);
 }
 
 MediaMatrix::~MediaMatrix()
@@ -36,21 +51,19 @@ gint MediaMatrix::init(int argc, char *argv[])
   gint ret = -1;
 
   do {
-    /* Initialize GStreamer */
-    gst_init(&argc, &argv);
-
-    /* Create the empty pipeline */
-    pipeline_ = gst_pipeline_new ("matrix-pipeline");
     /* Create compositor and sink */
-    mix_compositor_ = gst_element_factory_make ("compositor", "video-compositor");
-    ALOG_BREAK_IF(!mix_compositor_);
+    // mix_compositor_ = gst_element_factory_make ("compositor", "video-compositor");
+    // ALOG_BREAK_IF(!mix_compositor_);
 
     // sink_ = gst_element_factory_make ("kmssink", "video-sink");
     // ALOG_BREAK_IF(!sink_);
 
     /* Create input objects and their bins */
     // InputIntfPtr v4l2in = std::make_shared<InputImplV4L2>("/dev/video0", 4);
-    InputIntfPtr v4l2in = InputIntfManager::instance()->create(INPUT_TYPE_V4L2);
+    // InputIntfPtr v4l2in = InputIntfManager::instance()->create(INPUT_TYPE_V4L2);
+    // MediaInputIntfPtr v4l2in = MediaInputModule::instance()->create(VideoInputType::kVideoInputHdmi);
+    MediaInputIntfPtr v4l2in;
+    v4l2in = MediaInputModule::instance()->create(VideoInputType::kVideoInputUridb);
     ALOGD("%s", v4l2in->name());
     // InputIntfPtr filein = std::make_shared<InputImplFile>("/home/cat/test/sample_2560x1440.mp4");
 
@@ -61,21 +74,12 @@ gint MediaMatrix::init(int argc, char *argv[])
     outputs_.push_back(kmsout);
     // inputs_.push_back(filein);
 
-    /* Modify properties */
-    g_object_set(G_OBJECT(mix_compositor_), // compositor
-            "background", 1, // black background
-            NULL);
-    // g_object_set (G_OBJECT(sink_), // kmssink
-    //         "sync", FALSE,
-    //         "skip-vsync", TRUE,
-    //         NULL);
-
     /* Build the pipeline: add input bins, compositor and sink */
-    GstElement *v4l2_bin = v4l2in->bin();
+    GstElement *v4l2_bin = MediaInputModule::instance()->get_bin();
     // GstElement *file_bin = filein->bin();
     GstElement *sink_bin = kmsout->bin();
 
-    gst_bin_add_many(GST_BIN(pipeline_), v4l2_bin, /*file_bin,*/ mix_compositor_, sink_bin, NULL);
+    gst_bin_add_many(GST_BIN(pipeline_), v4l2_bin, /*file_bin, mix_compositor_,*/ sink_bin, NULL);
 
     // if (gst_element_link_many(mix_compositor_, sink_bin, NULL) != TRUE) {
     //   ALOGD("Elements could not be linked: mix_compositor_ -> sink_");
@@ -90,7 +94,9 @@ gint MediaMatrix::init(int argc, char *argv[])
     //   gst_object_unref(sink_sink_pad);
     //   break;
     // }
-    GstPad *src_pad = v4l2in->src_pad();
+    // GstPad *src_pad = v4l2in->get_src_pad("default");
+    GstPad *src_pad = MediaInputModule::instance()->get_request_pad(v4l2in);
+    if (src_pad == NULL) ALOGD("ERROR");
     GstPad *sink_pad = kmsout->sink_pad();
     if (gst_pad_link(src_pad, sink_pad) != GST_PAD_LINK_OK) {
       ALOGD("Failed to link compositor src pad to sink sink pad");
@@ -113,7 +119,7 @@ gint MediaMatrix::init(int argc, char *argv[])
       gst_object_unref (pipeline_);
       return -1;
     }
-    bus_ = gst_element_get_bus (pipeline_);
+    // bus_ = gst_element_get_bus (pipeline_);
 
     /* 在这里生成DOT文件 */
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_),
@@ -158,18 +164,19 @@ gint MediaMatrix::join()
       continue;
     }
 
-    GError *err = nullptr;
-    gchar *debug_info = nullptr;
+    // GError *err = nullptr;
+    // gchar *debug_info = nullptr;
 
     switch (GST_MESSAGE_TYPE(msg)) {
       case GST_MESSAGE_ERROR:
-        gst_message_parse_error(msg, &err, &debug_info);
-        ALOGD("Error received from element %s: %s",
-            GST_OBJECT_NAME (msg->src), err ? err->message : "(null)");
-        ALOGD("Debugging information: %s",
-            debug_info ? debug_info : "none");
-        g_clear_error (&err);
-        g_free (debug_info);
+        // gst_message_parse_error(msg, &err, &debug_info);
+        // ALOGD("Error received from element %s: %s",
+        //     GST_OBJECT_NAME (msg->src), err ? err->message : "(null)");
+        // ALOGD("Debugging information: %s",
+        //     debug_info ? debug_info : "none");
+        // g_clear_error (&err);
+        // g_free (debug_info);
+        on_handle_bus_msg_error(bus_, msg, nullptr);
         gst_message_unref (msg);
         return 0;
       case GST_MESSAGE_EOS:
@@ -187,44 +194,58 @@ gint MediaMatrix::join()
   return 0;
 }
 
-gint MediaMatrix::setupCompositorPads()
+gboolean MediaMatrix::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg, void *data)
 {
-  if (inputs_.empty()) return -1;
+  gboolean ret = TRUE;
+  GError *err = nullptr;
+  gchar *debug_info = nullptr;
 
-  for (uint64_t i = 0; i < inputs_.size(); ++i) {
-    GstPad *sink_pad = gst_element_get_request_pad(mix_compositor_, "sink_%u");
-    if (!sink_pad) {
-      ALOGD("Failed to get request pad from compositor");
-      return -1;
+  do {
+    gst_message_parse_error(msg, &err, &debug_info);
+    ALOGD("BusError:%s from element:%s", err ? err->message : "(null)", GST_OBJECT_NAME (msg->src));
+    ALOGD("BusDebug:%s", debug_info ? debug_info : "none");
+
+    GstObject *src_obj = msg->src;
+    GstElement *videoin_bin = MediaInputModule::instance()->get_bin();
+    if (src_obj && videoin_bin && gst_object_has_ancestor(src_obj, GST_OBJECT(videoin_bin))) {
+      ALOGD("Error comes from MediaInputModule subtree; trying to locate failing input");
+      MediaMatrix *self = MediaMatrix::instance().get();
+      for (size_t i = 0; i < self->inputs_.size(); ++i) {
+        MediaInputIntfPtr input = self->inputs_[i];
+        if (!input) continue;
+        GstElement *inbin = input->get_bin();
+        if (!inbin) continue;
+        if (gst_object_has_ancestor(src_obj, GST_OBJECT(inbin))) {
+          ALOGD("Detected error in input %s (id=%d)", input->name(), input->id());
+
+          ALOGD("Attempting soft-restart of input bin %s", input->name());
+          gst_element_set_state(inbin, GST_STATE_READY);
+          gst_element_set_state(inbin, GST_STATE_PLAYING);
+
+          if (GST_IS_ELEMENT(msg->src)) {
+            GstElement *e = GST_ELEMENT(msg->src);
+            GstElementFactory *factory = gst_element_get_factory(e);
+            if (factory) {
+              const gchar *fname = gst_plugin_feature_get_name(factory);
+              if (fname && g_str_has_prefix(fname, "uridecodebin")) {
+                ALOGD("Error originated from uridecodebin (or child). Consider checking the URI, parser chain and caps negotiation.");
+                // TODO
+              }
+              gst_object_unref(factory);
+            }
+          }
+          break;
+        }
+      }
     }
+  } while(0);
 
-    // Simple layout: two columns side-by-side for first two streams
-    if (i == 0) {
-      g_object_set(sink_pad, "xpos", 0, "ypos", 0, "width", 960, "height", 1080, NULL);
-    } else if (i == 1) {
-      g_object_set(sink_pad, "xpos", 960, "ypos", 0, "width", 960, "height", 1080, NULL);
-    } else {
-      // fallback place subsequent streams at 0,0 with small size
-      g_object_set(sink_pad, "xpos", 0, "ypos", 0, "width", 320, "height", 240, NULL);
-    }
-
-    GstPad *src_pad = inputs_[i]->src_pad();
-    if (!src_pad) {
-      ALOGD("Failed to get src pad from input %zu", i);
-      gst_object_unref(sink_pad);
-      return -1;
-    }
-
-    if (gst_pad_link(src_pad, sink_pad) != GST_PAD_LINK_OK) {
-      ALOGD("Failed to link input %zu to compositor sink", i);
-      gst_object_unref(sink_pad);
-      gst_object_unref(src_pad);
-      return -1;
-    }
-
-    gst_object_unref(sink_pad);
-    gst_object_unref(src_pad);
-  }
-
-  return 0;
+  return ret;
 }
+
+gboolean MediaMatrix::on_handle_bus_msg_eos(GstBus *bus, GstMessage *msg, void *data)
+{
+  return TRUE;
+}
+
+} // namespace mmx

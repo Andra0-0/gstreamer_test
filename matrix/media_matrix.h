@@ -6,10 +6,13 @@
 #include <vector>
 #include <atomic>
 
-#include "input_intf.h"
+// #include "input_intf.h"
+#include "media_input_intf.h"
 #include "output_intf.h"
 
 #define MEDIA_MATRIX_DOT_DIR "./dot"
+
+namespace mmx {
 
 class MediaMatrix {
 public:
@@ -38,8 +41,10 @@ public:
     }
   }
 
+  static gboolean on_handle_bus_msg_error(GstBus *bus, GstMessage *msg, void *data);
+  static gboolean on_handle_bus_msg_eos(GstBus *bus, GstMessage *msg, void *data);
+
 protected:
-  gint setupCompositorPads();
 
 private:
   static std::mutex inslock_;
@@ -47,15 +52,17 @@ private:
   std::atomic<bool> exit_pending_;
 
   GstElement *pipeline_;
-  GstElement *mix_compositor_;
+  // GstElement *mix_compositor_;
   // GstElement *sink_;
 
   // Inputs encapsulated as classes; each input provides a GstBin with a "src" pad
-  std::vector<InputIntfPtr> inputs_;
+  std::vector<MediaInputIntfPtr> inputs_;
 
   std::vector<OutputIntfPtr> outputs_;
 
   GstBus *bus_;
 };
+
+} // namespace mmx
 
 #endif // MEDIA_MATRIX_H

@@ -6,7 +6,7 @@
 
 static void handle_signal(int /*sig*/) {
   /* Only set an atomic flag here — do not call non-async-signal-safe functions. */
-  MediaMatrix::instance()->exit_pending();
+  mmx::MediaMatrix::instance()->exit_pending();
 }
 
 int main(int argc, char *argv[]) {
@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
   sigaction(SIGINT, &sa, NULL);  // CTRL+C
   sigaction(SIGTERM, &sa, NULL); // kill
 
-  auto media_matrix = MediaMatrix::instance();
+  auto media_matrix = mmx::MediaMatrix::instance();
   ret = media_matrix->init(argc, argv);
   if (ret != 0) {
     ALOGD("MediaMatrix init failed.");

@@ -23,7 +23,7 @@ public:
     drmModePlaneRes *plane_res;
   };
 
-  OutputImplKms(hdmi_tx_port port);
+  explicit OutputImplKms(hdmi_tx_port port);
 
   ~OutputImplKms();
 
