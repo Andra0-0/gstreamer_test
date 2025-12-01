@@ -39,6 +39,7 @@ struct VideoRequestPad {
   GstElement *inselect_;
   string indev_main_;
   string indev_curr_;
+  bool indev_main_linked_;
   list<MediaInputIntfPtr> indev_list_;
 };
 
@@ -85,6 +86,11 @@ public:
    */
   void on_videoin_is_ready(MediaInputIntf *ptr);
 
+  /**
+   * MediaMatrix先检查GstMessage，错误发生在MediaInputModule内部，则从这处理
+   */
+  void on_handle_bus_msg_error(GstBus *bus, GstMessage *msg);
+
 protected:
   MediaInputIntfPtr create_videoin_err();
 
@@ -93,6 +99,9 @@ protected:
    * 尝试连接输入源视频流，若失败则切换到备用流
    */
   GstPad* create_video_src_pad(const MediaInputIntfPtr &ptr);
+
+  void connect_selector(const MediaInputIntfPtr &ptr);
+  void switch_selector(const MediaInputIntfPtr &ptr, bool open);
 
 private:
   static MediaInputModulePtr instance_;

@@ -156,16 +156,61 @@ void MediaInputModule::on_videoin_is_ready(MediaInputIntf *ptr)
 
   do {
     for (auto it : videoin_array_) {
+      if (!it) continue;
       if (ptr->id() == it->id()) {
         input = it;
         break;
       }
     }
 
-    // 检查所有src pad，是否需要切换备用流到主流
+    // MediaInputModule获取pad不会失败，而是切换到备用流
+    // 如果MediaInputIntf未准备好，在这里重连
+    connect_selector(input);
 
     // create_video_src_pad(input);
     // TODO create_audio_src_pad
+  } while(0);
+}
+
+void MediaInputModule::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg)
+{
+  ALOG_TRACE;
+  GstElement *elem;
+  GstElementFactory *factory;
+
+  do {
+    for (auto input : videoin_array_) {
+      if (!input) continue;
+
+      GstElement *bin = input->get_bin();
+      if (!bin) {
+        ALOGD("Error to get bin from %s", input->name());
+        continue;
+      }
+      if (gst_object_has_ancestor(msg->src, GST_OBJECT(bin))) {
+        ALOGD("Detected error in input %s (id=%d)", input->name(), input->id());
+
+        gst_element_set_state(bin, GST_STATE_READY);
+        // TODO
+        // ALOGD("Attempting soft-restart of input bin %s", input->name());
+        // gst_element_set_state(bin, GST_STATE_PLAYING);
+
+        switch_selector(input, false);
+      }
+    }
+
+    // ALOG_BREAK_IF(!GST_IS_ELEMENT(msg->src));
+    // elem = GST_ELEMENT(msg->src);
+
+    // factory = gst_element_get_factory(elem);
+    // ALOG_BREAK_IF(!factory);
+
+    // const gchar *fname = gst_plugin_feature_get_name(factory);
+    // if (g_str_has_prefix(fname, "uridecodebin")) {
+
+    // }
+
+    // gst_object_unref(factory);
   } while(0);
 }
 
@@ -173,7 +218,7 @@ GstPad* MediaInputModule::create_video_src_pad(const MediaInputIntfPtr &ptr)
 {
   ALOG_TRACE;
   VideoRequestPad req;
-  bool is_main_stream_failed = true;
+  // bool is_main_stream_failed = true;
 
   do {
     lock_core_.lock();
@@ -192,7 +237,7 @@ GstPad* MediaInputModule::create_video_src_pad(const MediaInputIntfPtr &ptr)
       if (ret != GST_PAD_LINK_OK) {
         ALOGD("Failed to link src pad0 to sink pad0, ret:%d", ret);
       } else {
-        is_main_stream_failed = false;
+        req.indev_main_linked_ = true;
       }
       // gst_object_unref(src_pad0);
     } else {
@@ -207,7 +252,7 @@ GstPad* MediaInputModule::create_video_src_pad(const MediaInputIntfPtr &ptr)
       if (gst_pad_link(src_pad1, sink_pad1) != GST_PAD_LINK_OK) {
         ALOGD("Failed to link src pad1 to sink pad1");
       }
-      if (is_main_stream_failed) {
+      if (!req.indev_main_linked_) {
         g_object_set(new_selector, "active-pad", sink_pad1, NULL);
         ALOGD("Link fallback stream");
       }
@@ -232,10 +277,10 @@ GstPad* MediaInputModule::create_video_src_pad(const MediaInputIntfPtr &ptr)
     req.inselect_ = new_selector;
     req.indev_list_ = {ptr, videoin_err_};
     req.indev_main_ = ptr->name();
-    if (is_main_stream_failed) {
-      req.indev_curr_ = videoin_err_->name();
-    } else {
+    if (req.indev_main_linked_) {
       req.indev_curr_ = ptr->name();
+    } else {
+      req.indev_curr_ = videoin_err_->name();
     }
 
     reqpad_umap_.emplace(new_pad_name, req);
@@ -246,6 +291,60 @@ GstPad* MediaInputModule::create_video_src_pad(const MediaInputIntfPtr &ptr)
   } while(0);
 
   return req.inpad_;
+}
+
+void MediaInputModule::connect_selector(const MediaInputIntfPtr &ptr)
+{
+  ALOG_TRACE;
+  do {
+    for (auto it : reqpad_umap_) {
+      if (it.second.indev_main_ != ptr->name()) continue;
+      if (it.second.indev_main_linked_) continue;
+
+      GstPad *sink_pad0 = gst_element_get_static_pad(it.second.inselect_, "sink_0");
+      ALOG_BREAK_IF(!sink_pad0);
+
+      GstPad *src_pad0 = ptr->get_request_pad(true);
+      if (src_pad0) {
+        GstPadLinkReturn ret = gst_pad_link(src_pad0, sink_pad0);
+        if (ret != GST_PAD_LINK_OK) {
+          ALOGD("Failed to link src pad0 to sink pad0, ret:%d", ret);
+        } else {
+          it.second.indev_main_linked_ = true;
+          g_object_set(G_OBJECT(it.second.inselect_), "active-pad", sink_pad0, NULL);
+        }
+        // gst_object_unref(src_pad0);
+      } else {
+        ALOGD("Failed to get request pad from %s", ptr->name());
+      }
+      if (sink_pad0) gst_object_unref(sink_pad0);
+    }
+  } while(0);
+}
+
+void MediaInputModule::switch_selector(const MediaInputIntfPtr &ptr, bool open)
+{
+  ALOG_TRACE;
+  do {
+    for (auto it : reqpad_umap_) {
+      if (it.second.indev_main_ != ptr->name()) continue;
+
+      bool is_main_stream = (it.second.indev_main_ == it.second.indev_curr_);
+      if (open && !is_main_stream) {
+        GstPad *sink_pad0 = gst_element_get_static_pad(it.second.inselect_, "sink0");
+        if (sink_pad0) {
+          g_object_set(G_OBJECT(it.second.inselect_), "active-pad", sink_pad0, NULL);
+          gst_object_unref(sink_pad0);
+        }
+      } else if (!open && is_main_stream) {
+        GstPad *sink_pad1 = gst_element_get_static_pad(it.second.inselect_, "sink1");
+        if (sink_pad1) {
+          g_object_set(G_OBJECT(it.second.inselect_), "active-pad", sink_pad1, NULL);
+          gst_object_unref(sink_pad1);
+        }
+      }
+    }
+  } while(0);
 }
 
 } // namespace mmx

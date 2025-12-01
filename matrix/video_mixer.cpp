@@ -19,7 +19,8 @@ gint VideoMixer::init()
   gint ret = -1;
 
   do {
-    bin_ = gst_bin_new("video-mixer-bin");
+    // TODO name
+    bin_ = gst_bin_new(nullptr);
     ALOG_BREAK_IF(!bin_);
 
     mix_ = gst_element_factory_make("glvideomixer", "video-mixer-gl");
@@ -30,6 +31,9 @@ gint VideoMixer::init()
 
     tee_ = gst_element_factory_make("tee", "video-mixer-tee");
     ALOG_BREAK_IF(!tee_);
+
+    queue_ = gst_element_factory_make("queue", "video-mixer-queue");
+    ALOG_BREAK_IF(!queue_);
 
     g_object_set(G_OBJECT(mix_),
             "background", 1,
@@ -46,6 +50,11 @@ gint VideoMixer::init()
     } else {
       ALOGD("Failed to create caps for capsfilter");
     }
+
+    gst_bin_add_many(GST_BIN(bin_), mix_, caps_, tee_, queue_, NULL);
+    if (!gst_element_link_many(mix_, caps_, tee_, queue_, NULL)) {
+      ALOGD("Failed to link elements");
+    }
     ret = 0;
   } while(0);
 
@@ -54,4 +63,9 @@ gint VideoMixer::init()
   }
 
   return ret;
+}
+
+gint VideoMixer::deinit()
+{
+  // TODO gst_element_factory_make failed?
 }

@@ -25,7 +25,7 @@ MediaMatrix::MediaMatrix()
 
   // debug 环境变量
   // g_setenv("GST_DEBUG","3", TRUE);
-  g_setenv("GST_DEBUG","3,rgavideoconvert:5", TRUE);
+  g_setenv("GST_DEBUG","1,rgavideoconvert:5", TRUE);
   // g_setenv("GST_DEBUG_FILE","/tmp/mmdebug.log", TRUE);
   g_setenv("GST_DEBUG_DUMP_DOT_DIR", MEDIA_MATRIX_DOT_DIR, TRUE);
 
@@ -118,6 +118,8 @@ gint MediaMatrix::init(int argc, char *argv[])
       ALOGD("Unable to set the pipeline to the playing state.");
       gst_object_unref (pipeline_);
       return -1;
+    } else {
+      ALOGD("MediaMatrix pipeline set state playing success");
     }
     // bus_ = gst_element_get_bus (pipeline_);
 
@@ -178,7 +180,7 @@ gint MediaMatrix::join()
         // g_free (debug_info);
         on_handle_bus_msg_error(bus_, msg, nullptr);
         gst_message_unref (msg);
-        return 0;
+        // return 0;
       case GST_MESSAGE_EOS:
         ALOGD("End-Of-Stream reached.");
         gst_message_unref (msg);
@@ -196,6 +198,7 @@ gint MediaMatrix::join()
 
 gboolean MediaMatrix::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg, void *data)
 {
+  ALOG_TRACE;
   gboolean ret = TRUE;
   GError *err = nullptr;
   gchar *debug_info = nullptr;
@@ -205,39 +208,46 @@ gboolean MediaMatrix::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg, void
     ALOGD("BusError:%s from element:%s", err ? err->message : "(null)", GST_OBJECT_NAME (msg->src));
     ALOGD("BusDebug:%s", debug_info ? debug_info : "none");
 
-    GstObject *src_obj = msg->src;
-    GstElement *videoin_bin = MediaInputModule::instance()->get_bin();
-    if (src_obj && videoin_bin && gst_object_has_ancestor(src_obj, GST_OBJECT(videoin_bin))) {
-      ALOGD("Error comes from MediaInputModule subtree; trying to locate failing input");
-      MediaMatrix *self = MediaMatrix::instance().get();
-      for (size_t i = 0; i < self->inputs_.size(); ++i) {
-        MediaInputIntfPtr input = self->inputs_[i];
-        if (!input) continue;
-        GstElement *inbin = input->get_bin();
-        if (!inbin) continue;
-        if (gst_object_has_ancestor(src_obj, GST_OBJECT(inbin))) {
-          ALOGD("Detected error in input %s (id=%d)", input->name(), input->id());
-
-          ALOGD("Attempting soft-restart of input bin %s", input->name());
-          gst_element_set_state(inbin, GST_STATE_READY);
-          gst_element_set_state(inbin, GST_STATE_PLAYING);
-
-          if (GST_IS_ELEMENT(msg->src)) {
-            GstElement *e = GST_ELEMENT(msg->src);
-            GstElementFactory *factory = gst_element_get_factory(e);
-            if (factory) {
-              const gchar *fname = gst_plugin_feature_get_name(factory);
-              if (fname && g_str_has_prefix(fname, "uridecodebin")) {
-                ALOGD("Error originated from uridecodebin (or child). Consider checking the URI, parser chain and caps negotiation.");
-                // TODO
-              }
-              gst_object_unref(factory);
-            }
-          }
-          break;
-        }
-      }
+    // 先确认是哪个模块
+    GstElement *media_input_module = MediaInputModule::instance()->get_bin();
+    if (media_input_module && gst_object_has_ancestor(msg->src, GST_OBJECT(media_input_module))) {
+      ALOGD("Error comes from MediaInputModule, trying to locate failing input");
+      MediaInputModule::instance()->on_handle_bus_msg_error(bus, msg);
     }
+
+    // GstObject *src_obj = msg->src;
+    // GstElement *videoin_bin = MediaInputModule::instance()->get_bin();
+    // if (src_obj && videoin_bin && gst_object_has_ancestor(src_obj, GST_OBJECT(videoin_bin))) {
+    //   ALOGD("Error comes from MediaInputModule subtree; trying to locate failing input");
+    //   MediaMatrix *self = MediaMatrix::instance().get();
+    //   for (size_t i = 0; i < self->inputs_.size(); ++i) {
+    //     MediaInputIntfPtr input = self->inputs_[i];
+    //     if (!input) continue;
+    //     GstElement *inbin = input->get_bin();
+    //     if (!inbin) continue;
+    //     if (gst_object_has_ancestor(src_obj, GST_OBJECT(inbin))) {
+    //       ALOGD("Detected error in input %s (id=%d)", input->name(), input->id());
+
+    //       ALOGD("Attempting soft-restart of input bin %s", input->name());
+    //       gst_element_set_state(inbin, GST_STATE_READY);
+    //       gst_element_set_state(inbin, GST_STATE_PLAYING);
+
+    //       if (GST_IS_ELEMENT(msg->src)) {
+    //         GstElement *e = GST_ELEMENT(msg->src);
+    //         GstElementFactory *factory = gst_element_get_factory(e);
+    //         if (factory) {
+    //           const gchar *fname = gst_plugin_feature_get_name(factory);
+    //           if (fname && g_str_has_prefix(fname, "uridecodebin")) {
+    //             ALOGD("Error originated from uridecodebin (or child). Consider checking the URI, parser chain and caps negotiation.");
+    //             // TODO
+    //           }
+    //           gst_object_unref(factory);
+    //         }
+    //       }
+    //       break;
+    //     }
+    //   }
+    // }
   } while(0);
 
   return ret;

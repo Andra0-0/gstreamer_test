@@ -12,6 +12,7 @@ namespace mmx {
 using std::mutex;
 using std::vector;
 using std::unordered_map;
+using std::recursive_mutex;
 
 class MediaInputImplUridb : public MediaInputIntf {
 public:
@@ -46,7 +47,7 @@ protected:
   void create_audio_process(GstPad *pad);
 
 private:
-  mutex lock_;
+  recursive_mutex lock_;
 
   GstElement *bin_;
   GstElement *source_;
@@ -56,6 +57,7 @@ private:
   GstElement *video_cvt_;
   GstElement *video_caps_;
   GstElement *video_tee_;
+  // GstElement *video_fakesink_;
   // vector<GstPad*> video_pad_;
   unordered_map<string, GstElement*> video_queue_; // string padname, GstElement *queue
 

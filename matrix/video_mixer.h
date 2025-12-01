@@ -39,11 +39,23 @@ public:
 
   gint deinit();
 
-  gint connect(InputIntfPtr input, videomix_layout_t layout);
+  // gint connect(InputIntfPtr input, videomix_layout_t layout);
 
   gint update();
 
   gint disconnect_all();
+
+  GstElement* get_bin() { return bin_; }
+
+  /**
+   * @param name video_src
+   */
+  GstPad* get_static_pad(const gchar *name);
+
+  /**
+   * @param name video_sink_%u
+   */
+  GstPad* get_request_pad(const gchar *name);
 
 protected:
   gint setVideoMixLayout(gint input_count);
@@ -54,6 +66,7 @@ private:
   GstElement *mix_;
   GstElement *caps_;
   GstElement *tee_;
+  GstElement *queue_;
 
   videomix_layout_t layouts_[MIX_STREAM_MAX];
 };
