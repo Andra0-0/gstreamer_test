@@ -25,6 +25,8 @@ public:
 
   virtual gint pause() override;
 
+  virtual string get_info() override {}
+
   virtual GstElement* get_bin() override;
 
   virtual GstPad* get_request_pad(bool is_video) override;

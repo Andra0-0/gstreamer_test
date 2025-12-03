@@ -101,6 +101,11 @@ void MediaInputModule::destroy(gint id)
   } while(0);
 }
 
+string MediaInputModule::get_info()
+{
+
+}
+
 MediaInputIntfPtr MediaInputModule::create_videoin_err()
 {
   ALOG_TRACE;
@@ -166,6 +171,7 @@ void MediaInputModule::on_videoin_is_ready(MediaInputIntf *ptr)
     // MediaInputModule获取pad不会失败，而是切换到备用流
     // 如果MediaInputIntf未准备好，在这里重连
     connect_selector(input);
+    // input->start();
 
     // create_video_src_pad(input);
     // TODO create_audio_src_pad
@@ -302,8 +308,6 @@ void MediaInputModule::connect_selector(const MediaInputIntfPtr &ptr)
       if (it.second.indev_main_linked_) continue;
 
       GstPad *sink_pad0 = gst_element_get_static_pad(it.second.inselect_, "sink_0");
-      ALOG_BREAK_IF(!sink_pad0);
-
       GstPad *src_pad0 = ptr->get_request_pad(true);
       if (src_pad0) {
         GstPadLinkReturn ret = gst_pad_link(src_pad0, sink_pad0);
@@ -312,12 +316,24 @@ void MediaInputModule::connect_selector(const MediaInputIntfPtr &ptr)
         } else {
           it.second.indev_main_linked_ = true;
           g_object_set(G_OBJECT(it.second.inselect_), "active-pad", sink_pad0, NULL);
+          ALOGD("Link src pad0 to selector sink pad0 success");
         }
         // gst_object_unref(src_pad0);
       } else {
         ALOGD("Failed to get request pad from %s", ptr->name());
       }
-      if (sink_pad0) gst_object_unref(sink_pad0);
+      if (sink_pad0) {
+        /*Debug*/
+        GstPad *curr_pad;
+        g_object_get(it.second.inselect_, "active-pad", &curr_pad, NULL);
+        if (curr_pad != sink_pad0) {
+          ALOGD("\e[1;31mWARNING!!!\e[0m");
+        } else {
+          ALOGD("\e[1;31mSAME\e[0m");
+        }
+        gst_object_unref(curr_pad);
+        gst_object_unref(sink_pad0);
+      }
     }
   } while(0);
 }

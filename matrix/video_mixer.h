@@ -69,6 +69,8 @@ private:
   GstElement *queue_;
 
   videomix_layout_t layouts_[MIX_STREAM_MAX];
+
+  gint video_src_cnt_;
 };
 
 #endif // VIDEO_MIXER_H

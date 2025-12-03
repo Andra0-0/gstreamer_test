@@ -50,7 +50,7 @@ gint MediaInputImplImage::init()
             "location", "/home/cat/test/no_signal.jpg",
             NULL);
     g_object_set(G_OBJECT(decoder_),
-            "format", 11,
+            "format", 16, // 11-RGBA 16-BGR
             NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
             "format", G_TYPE_STRING, "RGBA",

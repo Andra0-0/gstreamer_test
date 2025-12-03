@@ -50,6 +50,11 @@ public:
   virtual gint pause() = 0;
 
   /**
+   * 获取当前媒体流信息
+   */
+  virtual string get_info() = 0;
+
+  /**
    * 获取Bin加入父级
    */
   virtual GstElement* get_bin() = 0;

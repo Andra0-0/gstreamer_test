@@ -28,6 +28,8 @@ public:
 
   virtual gint pause() override;
 
+  virtual string get_info() override;
+
   virtual GstElement* get_bin() override;
 
   virtual GstPad* get_request_pad(bool is_video) override;
@@ -57,11 +59,13 @@ private:
   GstElement *video_cvt_;
   GstElement *video_caps_;
   GstElement *video_tee_;
-  // GstElement *video_fakesink_;
   // vector<GstPad*> video_pad_;
   unordered_map<string, GstElement*> video_queue_; // string padname, GstElement *queue
 
   GstElement *audio_tee_;
+
+  // GstElement *fakesink_;
+  // GstElement *fakequeue_;
 
   // manager pad
   vector<GstElement*> pad_array_;

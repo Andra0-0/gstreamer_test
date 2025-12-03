@@ -70,6 +70,8 @@ public:
 
   void destroy(gint id);
 
+  string get_info();
+
   GstElement *get_bin() { return videoin_bin_; }
 
   // GstPad* get_src_pad(const char *padname);

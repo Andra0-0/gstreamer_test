@@ -36,10 +36,10 @@ gint VideoMixer::init()
     ALOG_BREAK_IF(!queue_);
 
     g_object_set(G_OBJECT(mix_),
-            "background", 1,
+            "background", 1, // 1-black
             NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
-            "format", G_TYPE_STRING, "RGBA",
+            "format", G_TYPE_STRING, "BGR",
             "width", G_TYPE_INT, SCREEN_WIDTH,
             "height", G_TYPE_INT, SCREEN_HEIGHT,
             // "framerate", GST_TYPE_FRACTION, 30, 1,

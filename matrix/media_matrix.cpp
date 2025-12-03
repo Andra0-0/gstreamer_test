@@ -25,7 +25,8 @@ MediaMatrix::MediaMatrix()
 
   // debug 环境变量
   // g_setenv("GST_DEBUG","3", TRUE);
-  g_setenv("GST_DEBUG","1,rgavideoconvert:5", TRUE);
+  // g_setenv("GST_DEBUG","1,rgavideoconvert:5", TRUE);
+  g_setenv("GST_DEBUG","1,inputselector:5", TRUE);
   // g_setenv("GST_DEBUG_FILE","/tmp/mmdebug.log", TRUE);
   g_setenv("GST_DEBUG_DUMP_DOT_DIR", MEDIA_MATRIX_DOT_DIR, TRUE);
 
@@ -48,6 +49,7 @@ MediaMatrix::~MediaMatrix()
 
 gint MediaMatrix::init(int argc, char *argv[])
 {
+  ALOG_TRACE;
   gint ret = -1;
 
   do {
@@ -170,6 +172,10 @@ gint MediaMatrix::join()
     // gchar *debug_info = nullptr;
 
     switch (GST_MESSAGE_TYPE(msg)) {
+      case GST_MESSAGE_EOS:
+        ALOGD("End-Of-Stream reached.");
+        gst_message_unref (msg);
+        return 0;
       case GST_MESSAGE_ERROR:
         // gst_message_parse_error(msg, &err, &debug_info);
         // ALOGD("Error received from element %s: %s",
@@ -181,10 +187,23 @@ gint MediaMatrix::join()
         on_handle_bus_msg_error(bus_, msg, nullptr);
         gst_message_unref (msg);
         // return 0;
-      case GST_MESSAGE_EOS:
-        ALOGD("End-Of-Stream reached.");
-        gst_message_unref (msg);
-        return 0;
+        break;
+      case GST_MESSAGE_STATE_CHANGED:
+        ALOGD("State-Changed bus message");
+        GstState old_state, new_state, pending_state;
+        gst_message_parse_state_changed (msg, &old_state, &new_state, &pending_state);
+        if (GST_MESSAGE_SRC(msg) == GST_OBJECT(pipeline_)) {
+            ALOGD("Pipeline state changed from %s to %s\n",
+                    gst_element_state_get_name (old_state),
+                    gst_element_state_get_name (new_state));
+            // GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_), GST_DEBUG_GRAPH_SHOW_ALL, "matrix_sys_pipeline");
+        }
+        break;
+      case GST_MESSAGE_CLOCK_LOST:
+        ALOGD("Clock-Lost bus message");
+        gst_element_set_state(pipeline_, GST_STATE_PAUSED);
+        gst_element_set_state(pipeline_, GST_STATE_PLAYING);
+        break;
       default:
         ALOGD("Unexpected message received.");
         gst_message_unref (msg);
