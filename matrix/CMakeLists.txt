@@ -2,6 +2,7 @@ set(
   MATRIX_HEADERS
   media_matrix.h
   noncopyable.h
+  ipad_prober.h
   ithread.h
   meta_message.h
   output_intf.h
@@ -17,6 +18,7 @@ set(
   MATRIX_SOURCES
   main.cpp
   media_matrix.cpp
+  ipad_prober.cpp
   ithread.cpp
   meta_message.cpp
   output_impl_kms.cpp

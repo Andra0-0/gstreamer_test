@@ -91,10 +91,10 @@ OutputImplKms::OutputImplKms(hdmi_tx_port port)
             "skip-vsync", TRUE,
             NULL);
     g_object_set(G_OBJECT(queue_),
-            "max-size-buffers", 50,
+            "max-size-buffers", 5,
             "max-size-bytes", 0,
             "max-size-time", 0,
-            "leaky", 2,
+            "leaky", 2, // 0-no 1-upstream 2-downstream
             NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
             "format", G_TYPE_STRING, "BGR",
@@ -114,6 +114,10 @@ OutputImplKms::OutputImplKms(hdmi_tx_port port)
     // 创建ghost pad作为这个bin的输入
     GstPad *pad = gst_element_get_static_pad(tee_, "sink");
     if (pad) {
+      // if (!prober_) {
+      //   prober_ = std::make_shared<mmx::IPadProber>(
+      //           pad, GST_PAD_PROBE_TYPE_BUFFER, mmx::deffunc_videoframe_info);
+      // }
       GstPad *ghost = gst_ghost_pad_new("sink", pad);
       gst_element_add_pad(bin_, ghost);
       gst_object_unref(pad);
@@ -135,4 +139,13 @@ GstPad* OutputImplKms::sink_pad()
 {
   if (!bin_) return nullptr;
   return gst_element_get_static_pad(bin_, "sink");
+}
+
+gint OutputImplKms::refresh()
+{
+  if (queue_) {
+    gst_element_send_event(queue_, gst_event_new_flush_start());
+    gst_element_send_event(queue_, gst_event_new_flush_stop(TRUE));
+  }
+  return 0;
 }

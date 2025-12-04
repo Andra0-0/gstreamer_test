@@ -27,6 +27,8 @@ public:
   // Return the sink pad (video) from the bin to link to compositor
   virtual GstPad* sink_pad() = 0;
 
+  virtual gint refresh() = 0;
+
 private:
 };
 

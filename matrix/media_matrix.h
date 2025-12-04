@@ -34,6 +34,8 @@ public:
 
   gint join();
 
+  gint update();
+
   void exit_pending(bool wait=false) {
     exit_pending_ = true;
     if (wait) {

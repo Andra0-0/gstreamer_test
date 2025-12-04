@@ -215,6 +215,15 @@ gint MediaMatrix::join()
   return 0;
 }
 
+gint MediaMatrix::update()
+{
+  for (auto it : outputs_) {
+    it->refresh();
+  }
+
+  return 0;
+}
+
 gboolean MediaMatrix::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg, void *data)
 {
   ALOG_TRACE;

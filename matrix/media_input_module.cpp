@@ -3,6 +3,7 @@
 #include "media_input_impl_image.h"
 #include "media_input_impl_hdmi.h"
 #include "media_input_impl_uridb.h"
+#include "media_matrix.h"
 #include "debug.h"
 
 namespace mmx {
@@ -146,6 +147,10 @@ GstPad* MediaInputModule::get_request_pad(const MediaInputIntfPtr &ptr, bool is_
   do {
     if (is_video) {
       new_pad = create_video_src_pad(ptr);
+      // if (!prober_) {
+      //   prober_ = std::make_shared<IPadProber>(
+      //           new_pad, GST_PAD_PROBE_TYPE_BUFFER, &deffunc_videoframe_info);
+      // }
     } else {
       // TODO
     }
@@ -197,10 +202,11 @@ void MediaInputModule::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg)
         ALOGD("Detected error in input %s (id=%d)", input->name(), input->id());
 
         gst_element_set_state(bin, GST_STATE_READY);
-        // TODO
+        // TODO 是否需要软重启？
         // ALOGD("Attempting soft-restart of input bin %s", input->name());
         // gst_element_set_state(bin, GST_STATE_PLAYING);
 
+        // FIXME 备用流失败是否要考虑？
         switch_selector(input, false);
       }
     }
@@ -317,23 +323,14 @@ void MediaInputModule::connect_selector(const MediaInputIntfPtr &ptr)
           it.second.indev_main_linked_ = true;
           g_object_set(G_OBJECT(it.second.inselect_), "active-pad", sink_pad0, NULL);
           ALOGD("Link src pad0 to selector sink pad0 success");
+          // Ugly FIXME
+          MediaMatrix::instance()->update();
         }
         // gst_object_unref(src_pad0);
       } else {
         ALOGD("Failed to get request pad from %s", ptr->name());
       }
-      if (sink_pad0) {
-        /*Debug*/
-        GstPad *curr_pad;
-        g_object_get(it.second.inselect_, "active-pad", &curr_pad, NULL);
-        if (curr_pad != sink_pad0) {
-          ALOGD("\e[1;31mWARNING!!!\e[0m");
-        } else {
-          ALOGD("\e[1;31mSAME\e[0m");
-        }
-        gst_object_unref(curr_pad);
-        gst_object_unref(sink_pad0);
-      }
+      if (sink_pad0) gst_object_unref(sink_pad0);
     }
   } while(0);
 }
@@ -347,13 +344,13 @@ void MediaInputModule::switch_selector(const MediaInputIntfPtr &ptr, bool open)
 
       bool is_main_stream = (it.second.indev_main_ == it.second.indev_curr_);
       if (open && !is_main_stream) {
-        GstPad *sink_pad0 = gst_element_get_static_pad(it.second.inselect_, "sink0");
+        GstPad *sink_pad0 = gst_element_get_static_pad(it.second.inselect_, "sink_0");
         if (sink_pad0) {
           g_object_set(G_OBJECT(it.second.inselect_), "active-pad", sink_pad0, NULL);
           gst_object_unref(sink_pad0);
         }
       } else if (!open && is_main_stream) {
-        GstPad *sink_pad1 = gst_element_get_static_pad(it.second.inselect_, "sink1");
+        GstPad *sink_pad1 = gst_element_get_static_pad(it.second.inselect_, "sink_1");
         if (sink_pad1) {
           g_object_set(G_OBJECT(it.second.inselect_), "active-pad", sink_pad1, NULL);
           gst_object_unref(sink_pad1);

@@ -2,6 +2,7 @@
 #define OUTPUT_IMPL_KMS_H
 
 #include "output_intf.h"
+#include "ipad_prober.h"
 
 extern "C" {
 #include <xf86drm.h>
@@ -31,6 +32,11 @@ public:
 
   GstPad* sink_pad() override;
 
+  /**
+   * 清空输出缓冲区
+   */
+  gint refresh() override;
+
 private:
   GstElement *bin_;
   GstElement *kms_sink_;
@@ -40,6 +46,8 @@ private:
   GstElement *capsfilter_;
 
   std::unique_ptr<DRM> p_drm_;
+
+  /*Debug*/mmx::IPadProberPtr prober_;
 };
 
 #endif // OUTPUT_IMPL_KMS_H

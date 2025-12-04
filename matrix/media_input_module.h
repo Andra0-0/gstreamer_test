@@ -9,6 +9,7 @@
 
 #include "noncopyable.h"
 #include "media_input_intf.h"
+#include "ipad_prober.h"
 
 namespace mmx {
 
@@ -102,7 +103,9 @@ protected:
    */
   GstPad* create_video_src_pad(const MediaInputIntfPtr &ptr);
 
+  // 主流准备完毕，尝试重连到input-selector
   void connect_selector(const MediaInputIntfPtr &ptr);
+  // 主流出错切换备用流，主流恢复切回主流
   void switch_selector(const MediaInputIntfPtr &ptr, bool open);
 
 private:
@@ -123,6 +126,7 @@ private:
 
   GstElement *videoin_bin_;
   // vector<GstElement*> videoinput_selector_;
+  /*Debug*/IPadProberPtr prober_;
 };
 
 } // namespace mmx

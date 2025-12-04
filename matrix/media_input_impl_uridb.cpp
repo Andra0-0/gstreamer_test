@@ -11,6 +11,7 @@ MediaInputImplUridb::MediaInputImplUridb()
   : bin_(nullptr)
   , source_(nullptr)
   , video_cvt_(nullptr)
+  , video_scale_(nullptr)
   , video_caps_(nullptr)
   , video_tee_(nullptr)
   , audio_tee_(nullptr)
@@ -37,11 +38,14 @@ gint MediaInputImplUridb::init()
     source_ = gst_element_factory_make("uridecodebin", "InputUriSource");
     ALOG_BREAK_IF(!source_);
 
-    // video_cvt_ = gst_element_factory_make("videoconvert", "UriVideoConvert");
-    // ALOG_BREAK_IF(!video_cvt_);
+    video_cvt_ = gst_element_factory_make("videoconvert", "UriVideoConvert");
+    ALOG_BREAK_IF(!video_cvt_);
 
-    // video_caps_ = gst_element_factory_make("capsfilter", "UriVideoCaps");
-    // ALOG_BREAK_IF(!video_caps_);
+    video_scale_ = gst_element_factory_make("videoscale", "UriVideoScale");
+    ALOG_BREAK_IF(!video_scale_);
+
+    video_caps_ = gst_element_factory_make("capsfilter", "UriVideoCaps");
+    ALOG_BREAK_IF(!video_caps_);
 
     video_tee_ = gst_element_factory_make("tee", "UriVideoTee");
     ALOG_BREAK_IF(!video_tee_);
@@ -53,9 +57,9 @@ gint MediaInputImplUridb::init()
     // ALOG_BREAK_IF(!fakequeue_);
 
     g_object_set(G_OBJECT(source_),
-            "uri", "v4l2:///dev/video0",
+            // "uri", "v4l2:///dev/video0",
             // "uri", "file:///home/cat/test/test.mp4",
-            // "uri", "rtsp://192.168.3.137:8554/h264ESVideoTest",
+            "uri", "rtsp://192.168.3.137:8554/h264ESVideoTest",
             // "uri", "rtsp://192.168.3.137:8554/mpeg2TransportStreamTest",
             // "uri", "http://distribution.bbb3d.renderfarming.net/video/mp4/bbb_sunflower_1080p_60fps_normal.mp4",
             NULL);
@@ -64,21 +68,21 @@ gint MediaInputImplUridb::init()
     //         "sync", FALSE,
     //         "async", FALSE,
     //         NULL);
-    // GstCaps *caps = gst_caps_new_simple("video/x-raw",
-    //         "format", G_TYPE_STRING, "BGR",
-    //         "width", G_TYPE_INT, 1920,
-    //         "height", G_TYPE_INT, 1080,
-    //         "framerate", GST_TYPE_FRACTION, 30, 1,
-    //         NULL);
-    // if (caps) {
-    //   g_object_set(G_OBJECT(video_caps_), "caps", caps, NULL);
-    //   gst_caps_unref(caps);
-    // } else {
-    //   ALOGD("Failed to create caps for capsfilter");
-    // }
+    GstCaps *caps = gst_caps_new_simple("video/x-raw",
+            "format", G_TYPE_STRING, "BGR",
+            "width", G_TYPE_INT, 1920,
+            "height", G_TYPE_INT, 1080,
+            // "framerate", GST_TYPE_FRACTION, 30, 1,
+            NULL);
+    if (caps) {
+      g_object_set(G_OBJECT(video_caps_), "caps", caps, NULL);
+      gst_caps_unref(caps);
+    } else {
+      ALOGD("Failed to create caps for capsfilter");
+    }
 
     gst_bin_add_many(GST_BIN(bin_), source_,
-            /*video_cvt_, video_caps_,*/ video_tee_,
+            video_cvt_, video_scale_, video_caps_, video_tee_,
             /*fakequeue_, fakesink_,*/ NULL);
 
     g_signal_connect(source_, "pad-added", G_CALLBACK(on_uridb_pad_added), this);
@@ -237,6 +241,7 @@ void MediaInputImplUridb::on_uridb_pad_added(GstElement *obj, GstPad *pad, void 
       }
     } else if (g_str_has_prefix(pad_type, "audio/")) {
       // TODO
+      ALOGD("TODO add audio pad process");
     }
   } while(0);
 }
@@ -319,6 +324,11 @@ GstPad* MediaInputImplUridb::create_video_src_pad()
       ALOGD("Failed to get src pad");
     }
 
+    // if (!prober_) {
+    //   prober_ = std::make_shared<IPadProber>(
+    //           new_pad, GST_PAD_PROBE_TYPE_BUFFER, deffunc_videoframe_info);
+    // }
+
     gst_element_sync_state_with_parent(new_queue);
     video_queue_.emplace(new_pad_name, new_queue);
     video_pad_cnt_++;
@@ -337,9 +347,9 @@ void MediaInputImplUridb::create_video_process(GstPad *pad)
     // gst_element_sync_state_with_parent(video_caps_);
     // gst_element_sync_state_with_parent(video_tee_);
 
-    // if (!gst_element_link_many(/*video_cvt_, video_caps_, */video_tee_, fakequeue_, fakesink_, NULL)) {
-    //   ALOGD("Failed to link elements");
-    // }
+    if (!gst_element_link_many(video_cvt_, video_scale_, video_caps_, video_tee_,/* fakequeue_, fakesink_,*/ NULL)) {
+      ALOGD("Failed to link elements");
+    }
     // auto it = video_queue_.find("video_src_0");
     // ALOG_BREAK_IF(it == video_queue_.end());
     // GstElement *queue = it->second;
@@ -352,7 +362,7 @@ void MediaInputImplUridb::create_video_process(GstPad *pad)
     // if (queue_sink_pad) gst_object_unref(queue_sink_pad);
     // if (tee_src_pad) gst_object_unref(tee_src_pad);
 
-    GstPad *sink_pad = gst_element_get_static_pad(video_tee_, "sink");
+    GstPad *sink_pad = gst_element_get_static_pad(video_cvt_, "sink");
     if (gst_pad_is_linked(sink_pad)) {
       ALOGD("Error to link videoconvert, sink pad already linked");
       break;

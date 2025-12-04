@@ -20,6 +20,7 @@ set(ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH}:${CMAKE_SYSROOT}/usr/share/pkgco
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(DEPS REQUIRED
   gstreamer-1.0
+  gstreamer-video-1.0
 )
 
 # 添加头文件搜索路径

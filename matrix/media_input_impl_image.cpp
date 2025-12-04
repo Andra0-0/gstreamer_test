@@ -37,6 +37,9 @@ gint MediaInputImplImage::init()
     convert_ = gst_element_factory_make("videoconvert", "InputImageConvert");
     ALOG_BREAK_IF(!convert_);
 
+    videorate_ = gst_element_factory_make("videorate", "InputImageRate");
+    ALOG_BREAK_IF(!videorate_);
+
     capsfilter_ = gst_element_factory_make("capsfilter", "InputImageCaps");
     ALOG_BREAK_IF(!capsfilter_);
 
@@ -53,10 +56,10 @@ gint MediaInputImplImage::init()
             "format", 16, // 11-RGBA 16-BGR
             NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
-            "format", G_TYPE_STRING, "RGBA",
+            "format", G_TYPE_STRING, "BGR",
             "width", G_TYPE_INT, 1920,
             "height", G_TYPE_INT, 1080,
-            "framerate", GST_TYPE_FRACTION, 30, 1,
+            "framerate", GST_TYPE_FRACTION, 3, 1, // 3fps
             NULL);
     if (caps) {
       g_object_set(G_OBJECT(capsfilter_), "caps", caps, NULL);
@@ -66,12 +69,20 @@ gint MediaInputImplImage::init()
     }
 
     gst_bin_add_many(GST_BIN(bin_), source_, parser_, decoder_,
-            convert_, imagefreeze_, capsfilter_, tee_, NULL);
+            convert_, imagefreeze_, capsfilter_, videorate_, tee_, NULL);
 
+    // FIXME: imagefreeze output too much video frame! (30000fps)
     if (!gst_element_link_many(source_, parser_, decoder_, convert_,
-            imagefreeze_, capsfilter_, tee_, NULL)) {
+            imagefreeze_, capsfilter_, videorate_, tee_, NULL)) {
       ALOGD("Failed to link filesrc->mppjpegdec->videoconvert->capsfilter->queue");
     }
+
+    // if (!prober_) {
+    //   GstPad *new_pad = gst_element_get_static_pad(videorate_, "src");
+    //   prober_ = std::make_shared<mmx::IPadProber>(
+    //           new_pad, GST_PAD_PROBE_TYPE_BUFFER, mmx::deffunc_videoframe_info);
+    //   gst_object_unref(new_pad);
+    // }
 
     state_ = kStreamStateReady;
     ret = 0;
@@ -148,6 +159,13 @@ GstPad* MediaInputImplImage::create_video_src_pad()
     ALOG_BREAK_IF(!new_queue);
     gst_bin_add(GST_BIN(bin_), new_queue);
 
+    g_object_set(G_OBJECT(new_queue),
+            "max-size-buffers", 3,
+            "max-size-bytes", 0,
+            "max-size-time", 0,
+            "leaky", 2, // 0-no 1-upstream 2-downstream
+            NULL);
+
     GstPad *tee_src_pad = gst_element_get_request_pad(tee_, "src_%u");
     GstPad *queue_sink_pad = gst_element_get_static_pad(new_queue, "sink");
     if (gst_pad_link(tee_src_pad, queue_sink_pad) != GST_PAD_LINK_OK) {
@@ -164,6 +182,10 @@ GstPad* MediaInputImplImage::create_video_src_pad()
     } else {
       ALOGD("Failed to get src pad");
     }
+    // if (!prober_) {
+    //   prober_ = std::make_shared<mmx::IPadProber>(
+    //           new_pad, GST_PAD_PROBE_TYPE_BUFFER, mmx::deffunc_videoframe_info);
+    // }
 
     video_pad_cnt_++;
     gst_element_sync_state_with_parent(new_queue);

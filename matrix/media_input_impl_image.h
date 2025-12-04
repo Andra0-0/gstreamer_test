@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "media_input_intf.h"
+#include "ipad_prober.h"
 
 namespace mmx {
 
@@ -44,11 +45,13 @@ private:
   GstElement *convert_;
   GstElement *capsfilter_;
   GstElement *imagefreeze_;
+  GstElement *videorate_;
   GstElement *tee_;
 
   mutex lock_;
   gint video_pad_cnt_;
   // unordered_map<const char*, GstElement*> umap_queue_;
+  IPadProberPtr prober_;
 };
 
 }
