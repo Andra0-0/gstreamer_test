@@ -59,6 +59,9 @@ public:
    */
   virtual GstElement* get_bin() = 0;
 
+  // TODO
+  // virtual GstPad* get_static_pad(const gchar *name) = 0;
+
   /**
    * 尝试获取音视频src pad，若媒体流未准备好返回nullptr
    */

@@ -13,12 +13,14 @@
 
 namespace mmx {
 
+class InputPadSwitch;
 class MediaInputModule;
 
 using std::list;
 using std::mutex;
 using std::vector;
 using std::recursive_mutex;
+using InputPadSwitchPtr = shared_ptr<InputPadSwitch>;
 using MediaInputModulePtr = shared_ptr<MediaInputModule>;
 
 enum VideoInputType {
@@ -35,13 +37,54 @@ enum VideoInputType {
  * @param indev_curr_ 当前输入源
  * @param indev_list_ 输入源链表
  */
-struct VideoRequestPad {
-  GstPad *inpad_;
-  GstElement *inselect_;
-  string indev_main_;
-  string indev_curr_;
-  bool indev_main_linked_;
-  list<MediaInputIntfPtr> indev_list_;
+// struct VideoRequestPad {
+//   GstPad *inpad_;
+//   GstElement *inselect_;
+//   string indev_main_;
+//   string indev_curr_;
+//   bool indev_main_linked_;
+//   list<MediaInputIntfPtr> indev_list_;
+// };
+
+class InputPadSwitch : public NonCopyable {
+public:
+  enum StreamType {
+    kTypeStreamMain = 0, // input-selector sink_0
+    kTypeStreamFallback1 = 1, // input-selector sink_1
+  };
+  struct InputPadCase {
+    // unordered_map<string, GstPad*> a;
+    StreamType type_;
+    // GstPad *indev_src_pad_;
+    MediaInputIntfPtr indev_src_;
+  };
+
+  InputPadSwitch(GstElement *bin, const gchar *name);
+  ~InputPadSwitch();
+
+  GstPad* get_pad() { return pad_; }
+
+  gint connect(const MediaInputIntfPtr &stream, StreamType type);
+  gint reconnect(const MediaInputIntfPtr &stream, StreamType type=kTypeStreamMain);
+  gint disconnect(const MediaInputIntfPtr &stream);
+
+  gint sswitch(StreamType type);
+
+  bool linked_mainstream() { return is_link_mainstream_; }
+  bool current_mainstream() { return is_curr_mainstream_; }
+
+private:
+  bool is_link_mainstream_; // Main stream might not ready
+  bool is_curr_mainstream_; // Current stream is mainstream or not
+
+  GstPad *pad_; // MediaInputModule bin ghost-pad
+  GstElement *selector_; // MediaInputModule bin input-selector
+
+  string stream_main_; // Name of main stream
+  string stream_curr_; // Name of current stream
+
+  // string: stream name, InputPadCase: stream info
+  unordered_map<string, InputPadCase> stream_umap_;
 };
 
 /**
@@ -104,9 +147,9 @@ protected:
   GstPad* create_video_src_pad(const MediaInputIntfPtr &ptr);
 
   // 主流准备完毕，尝试重连到input-selector
-  void connect_selector(const MediaInputIntfPtr &ptr);
+  // void connect_selector(const MediaInputIntfPtr &ptr);
   // 主流出错切换备用流，主流恢复切回主流
-  void switch_selector(const MediaInputIntfPtr &ptr, bool open);
+  // void switch_selector(const MediaInputIntfPtr &ptr, bool open);
 
 private:
   static MediaInputModulePtr instance_;
@@ -119,10 +162,10 @@ private:
 
   /**
    * @param string pad名称：video_src_%u
-   * @param VideoRequestPad 输入源链表及输入选择
+   * @param InputPadSwitch 输入源链表及输入选择
    */
-  unordered_map<string, VideoRequestPad> reqpad_umap_;
-  gint reqpad_cnt_;
+  unordered_map<string, InputPadSwitchPtr> inpad_umap_;
+  gint inpad_cnt_;
 
   GstElement *videoin_bin_;
   // vector<GstElement*> videoinput_selector_;

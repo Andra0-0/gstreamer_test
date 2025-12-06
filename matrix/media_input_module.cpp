@@ -18,6 +18,235 @@ const char *videoin_name[] = {
   "VideoInputUridb"
 };
 
+InputPadSwitch::InputPadSwitch(GstElement *bin, const gchar *name)
+  : is_link_mainstream_(false)
+  , is_curr_mainstream_(false)
+  , pad_(nullptr)
+  , selector_(nullptr)
+{
+  do {
+    selector_ = gst_element_factory_make("input-selector", nullptr);
+    ALOG_BREAK_IF(!selector_);
+    // gst_object_ref(selector_);
+    g_object_set(G_OBJECT(selector_),
+            "drop-backwards", TRUE,
+            // "sync-mode", 1,
+            // "sync-streams", FALSE,
+            NULL);
+
+    gst_bin_add(GST_BIN(bin), selector_);
+
+    GstPad *selector_src_pad = gst_element_get_static_pad(selector_, "src");
+    if (selector_src_pad) {
+      pad_ = gst_ghost_pad_new(name, selector_src_pad);
+      gst_element_add_pad(bin, pad_);
+      gst_object_unref(selector_src_pad);
+    } else {
+      ALOGD("Fatel error, get input-selector src pad failed");
+    }
+    gst_element_sync_state_with_parent(selector_);
+  } while(0);
+}
+
+InputPadSwitch::~InputPadSwitch()
+{
+  // if (selector_) {
+  //   gst_object_unref(selector_);
+  //   selector_ = nullptr;
+  // }
+  // if (pad_) {
+  //   gst_object_unref(pad_);
+  //   pad_ = nullptr;
+  // }
+}
+
+/**
+ * @brief 连接媒体流到input-selector，获取媒体流src pad失败也创建sink pad，等待后续重连
+ * @param stream 输入媒体流
+ * @param type 输入媒体流类型
+ */
+gint InputPadSwitch::connect(const MediaInputIntfPtr &stream, StreamType type)
+{
+  gint ret = -1;
+  GstPadLinkReturn res;
+  GstPad *src_pad, *sink_pad;
+  string sink_pad_name;
+
+  do {
+    if (type == kTypeStreamMain) {
+      ALOG_BREAK_IF(!stream_main_.empty());
+      stream_main_ = stream->name();
+    }
+
+    sink_pad_name = "sink_" + std::to_string(type);
+    sink_pad = gst_element_request_pad_simple(selector_, sink_pad_name.c_str());
+    ALOG_BREAK_IF(!sink_pad);
+
+    src_pad = stream->get_request_pad(true);
+    if (!src_pad) {
+      ALOGD("Failed to request src pad from %s", stream->name());
+      break;
+    }
+
+    res = gst_pad_link(src_pad, sink_pad);
+    if (res != GST_PAD_LINK_OK) {
+      ALOGD("Failed to link src pad to sink pad, res: %d", res);
+      break;
+    }
+
+    switch (type) {
+      case kTypeStreamMain:
+        is_link_mainstream_ = true;
+        is_curr_mainstream_ = true;
+        stream_curr_ = stream->name();
+        g_object_set(selector_, "active-pad", sink_pad, NULL);
+        break;
+      case kTypeStreamFallback1:
+        if (!is_link_mainstream_) {
+          is_curr_mainstream_ = false;
+          stream_curr_ = stream->name();
+          g_object_set(selector_, "active-pad", sink_pad, NULL);
+        }
+        break;
+      default:
+        // Should not happen
+        ALOGD("Fatel error, unknown stream type: %d", type);
+        if (sink_pad) g_object_unref(sink_pad);
+        return -1;
+    }
+
+    InputPadCase padcase;
+    padcase.type_ = type;
+    padcase.indev_src_ = stream;
+    stream_umap_.emplace(stream->name(), std::move(padcase));
+
+    ALOGD("Connect stream %s to %s success",
+            stream->name(), GST_OBJECT_NAME(selector_));
+    ret = 0;
+  } while(0);
+
+  if (sink_pad) {
+    g_object_unref(sink_pad);
+  }
+
+  return ret;
+}
+
+/**
+ * @brief 媒体流已准备完毕，尝试重连到input-selector
+ * @param stream 输入媒体流
+ * @param type 输入媒体流类型
+ */
+gint InputPadSwitch::reconnect(const MediaInputIntfPtr &stream, StreamType type)
+{
+  GstPad *src_pad, *sink_pad;
+  GstPadLinkReturn res;
+
+  do {
+    ALOG_BREAK_IF(type != kTypeStreamMain);
+
+    sink_pad = gst_element_get_static_pad(selector_, "sink_0");
+    if (!sink_pad) {
+      ALOGD("Failed to get static src pad from input-selector");
+      break;
+    }
+
+    src_pad = stream->get_request_pad(true);
+    if (!src_pad) {
+      ALOGD("Failed to request src pad from %s", stream->name());
+      break;
+    }
+
+    res = gst_pad_link(src_pad, sink_pad);
+    if (res != GST_PAD_LINK_OK) {
+      ALOGD("Failed to link src pad to sink pad, res: %d", res);
+      break;
+    }
+
+    is_link_mainstream_ = true;
+    is_curr_mainstream_ = true;
+    stream_curr_ = stream->name();
+    g_object_set(selector_, "active-pad", sink_pad, NULL);
+    // TODO: 需要清空后续通道的视频帧缓存
+    MediaMatrix::instance()->update();
+    ALOGD("Reconnect stream %s to %s success",
+            stream->name(), GST_OBJECT_NAME(selector_));
+  } while(0);
+
+  if (sink_pad) {
+    g_object_unref(sink_pad);
+  }
+
+  return 0;
+}
+
+/**
+ * @brief 查找该媒体流，有则断开连接，默认备用流不断开
+ * @param stream 输入媒体流
+ * @param type 输入媒体流类型
+ */
+gint InputPadSwitch::disconnect(const MediaInputIntfPtr &stream)
+{
+  unordered_map<string, InputPadCase>::iterator iterator;
+
+  do {
+    iterator = stream_umap_.find(stream->name());
+    if (iterator == stream_umap_.end()) {
+      break;
+    }
+    ALOG_BREAK_IF(iterator->second.type_ != kTypeStreamMain);
+
+    unordered_map<string, InputPadCase>::iterator it;
+    for (it = stream_umap_.begin(); it != stream_umap_.end(); ++it) {
+      if (it->first != iterator->first) break;
+    }
+    ALOG_BREAK_IF(it == stream_umap_.end()); // no other stream
+    if (stream_curr_ == stream->name()) {
+      string pad_name = "sink_" + std::to_string(it->second.type_);
+      GstPad *pad = gst_element_get_static_pad(selector_, pad_name.c_str());
+      if (pad) {
+        g_object_set(G_OBJECT(selector_), "active-pad", pad, NULL);
+        gst_object_unref(pad);
+      }
+    }
+
+    is_link_mainstream_ = false;
+    is_curr_mainstream_ = false;
+    stream_curr_ = it->second.indev_src_->name();
+    stream_main_.clear();
+    stream_umap_.erase(iterator);
+  } while(0);
+
+  return 0;
+}
+
+gint InputPadSwitch::sswitch(StreamType type)
+{
+  GstPad *sink_pad = nullptr;
+
+  switch (type) {
+    case kTypeStreamMain:
+      if (!is_link_mainstream_ || is_curr_mainstream_) break;
+      sink_pad = gst_element_get_static_pad(selector_, "sink_0");
+      if (sink_pad) {
+        g_object_set(G_OBJECT(selector_), "active-pad", sink_pad, NULL);
+        gst_object_unref(sink_pad);
+      }
+      break;
+    case kTypeStreamFallback1:
+      sink_pad = gst_element_get_static_pad(selector_, "sink_1");
+      if (sink_pad) {
+        g_object_set(G_OBJECT(selector_), "active-pad", sink_pad, NULL);
+        gst_object_unref(sink_pad);
+      }
+      break;
+    default:
+      break;
+  }
+
+  return 0;
+}
+
 MediaInputModule::MediaInputModule()
   : videoin_cnt_(0)
 {
@@ -175,7 +404,10 @@ void MediaInputModule::on_videoin_is_ready(MediaInputIntf *ptr)
 
     // MediaInputModule获取pad不会失败，而是切换到备用流
     // 如果MediaInputIntf未准备好，在这里重连
-    connect_selector(input);
+    // connect_selector(input);
+    for (auto it : inpad_umap_) {
+      it.second->reconnect(input);
+    }
     // input->start();
 
     // create_video_src_pad(input);
@@ -201,163 +433,44 @@ void MediaInputModule::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg)
       if (gst_object_has_ancestor(msg->src, GST_OBJECT(bin))) {
         ALOGD("Detected error in input %s (id=%d)", input->name(), input->id());
 
-        gst_element_set_state(bin, GST_STATE_READY);
+        gst_element_set_state(bin, GST_STATE_PAUSED);
         // TODO 是否需要软重启？
         // ALOGD("Attempting soft-restart of input bin %s", input->name());
         // gst_element_set_state(bin, GST_STATE_PLAYING);
 
         // FIXME 备用流失败是否要考虑？
-        switch_selector(input, false);
+        // switch_selector(input, false);
+        for (auto it : inpad_umap_) {
+          it.second->sswitch(InputPadSwitch::kTypeStreamFallback1);
+        }
       }
     }
-
-    // ALOG_BREAK_IF(!GST_IS_ELEMENT(msg->src));
-    // elem = GST_ELEMENT(msg->src);
-
-    // factory = gst_element_get_factory(elem);
-    // ALOG_BREAK_IF(!factory);
-
-    // const gchar *fname = gst_plugin_feature_get_name(factory);
-    // if (g_str_has_prefix(fname, "uridecodebin")) {
-
-    // }
-
-    // gst_object_unref(factory);
   } while(0);
 }
 
 GstPad* MediaInputModule::create_video_src_pad(const MediaInputIntfPtr &ptr)
 {
   ALOG_TRACE;
-  VideoRequestPad req;
-  // bool is_main_stream_failed = true;
+  InputPadSwitchPtr inpad;
+  GstPad *ret = nullptr;
 
   do {
     lock_core_.lock();
 
-    string new_pad_name = string("video_src_") + std::to_string(reqpad_cnt_);
+    string new_pad_name = string("video_src_") + std::to_string(inpad_cnt_);
 
-    GstElement *new_selector = gst_element_factory_make("input-selector", nullptr);
-    ALOG_BREAK_IF(!new_selector);
-    gst_bin_add(GST_BIN(videoin_bin_), new_selector);
+    inpad = std::make_shared<InputPadSwitch>(videoin_bin_, new_pad_name.c_str());
+    ret = inpad->get_pad();
 
-    // Link source0 -> input-selector
-    GstPad *sink_pad0 = gst_element_get_request_pad(new_selector, "sink_%u");
-    GstPad *src_pad0 = ptr->get_request_pad(true);
-    if (src_pad0) {
-      GstPadLinkReturn ret = gst_pad_link(src_pad0, sink_pad0);
-      if (ret != GST_PAD_LINK_OK) {
-        ALOGD("Failed to link src pad0 to sink pad0, ret:%d", ret);
-      } else {
-        req.indev_main_linked_ = true;
-      }
-      // gst_object_unref(src_pad0);
-    } else {
-      ALOGD("Failed to get request pad from %s", ptr->name());
-    }
-    if (sink_pad0) gst_object_unref(sink_pad0);
+    inpad->connect(ptr, InputPadSwitch::kTypeStreamMain);
+    inpad->connect(videoin_err_, InputPadSwitch::kTypeStreamFallback1);
 
-    // Link source1 -> input-selector
-    GstPad *sink_pad1 = gst_element_get_request_pad(new_selector, "sink_%u");
-    GstPad *src_pad1 = videoin_err_->get_request_pad(true);
-    if (src_pad1) {
-      if (gst_pad_link(src_pad1, sink_pad1) != GST_PAD_LINK_OK) {
-        ALOGD("Failed to link src pad1 to sink pad1");
-      }
-      if (!req.indev_main_linked_) {
-        g_object_set(new_selector, "active-pad", sink_pad1, NULL);
-        ALOGD("Link fallback stream");
-      }
-      // gst_object_unref(src_pad1);
-    } else {
-      ALOGD("Failed to get request pad from %s", ptr->name());
-    }
-    if (sink_pad1) gst_object_unref(sink_pad1);
-
-    // Create ghost pad to bin
-    GstPad *ghost = nullptr;
-    GstPad *selector_src_pad = gst_element_get_static_pad(new_selector, "src");
-    if (selector_src_pad) {
-      ghost = gst_ghost_pad_new(new_pad_name.c_str(), selector_src_pad);
-      gst_element_add_pad(videoin_bin_, ghost);
-      gst_object_unref(selector_src_pad);
-    } else {
-      ALOGD("Failed to get convert src pad");
-    }
-
-    req.inpad_ = ghost;
-    req.inselect_ = new_selector;
-    req.indev_list_ = {ptr, videoin_err_};
-    req.indev_main_ = ptr->name();
-    if (req.indev_main_linked_) {
-      req.indev_curr_ = ptr->name();
-    } else {
-      req.indev_curr_ = videoin_err_->name();
-    }
-
-    reqpad_umap_.emplace(new_pad_name, req);
-    reqpad_cnt_++;
-
-    gst_element_sync_state_with_parent(new_selector);
+    inpad_umap_.emplace(new_pad_name, std::move(inpad));
+    inpad_cnt_++;
     lock_core_.unlock();
   } while(0);
 
-  return req.inpad_;
-}
-
-void MediaInputModule::connect_selector(const MediaInputIntfPtr &ptr)
-{
-  ALOG_TRACE;
-  do {
-    for (auto it : reqpad_umap_) {
-      if (it.second.indev_main_ != ptr->name()) continue;
-      if (it.second.indev_main_linked_) continue;
-
-      GstPad *sink_pad0 = gst_element_get_static_pad(it.second.inselect_, "sink_0");
-      GstPad *src_pad0 = ptr->get_request_pad(true);
-      if (src_pad0) {
-        GstPadLinkReturn ret = gst_pad_link(src_pad0, sink_pad0);
-        if (ret != GST_PAD_LINK_OK) {
-          ALOGD("Failed to link src pad0 to sink pad0, ret:%d", ret);
-        } else {
-          it.second.indev_main_linked_ = true;
-          g_object_set(G_OBJECT(it.second.inselect_), "active-pad", sink_pad0, NULL);
-          ALOGD("Link src pad0 to selector sink pad0 success");
-          // Ugly FIXME
-          MediaMatrix::instance()->update();
-        }
-        // gst_object_unref(src_pad0);
-      } else {
-        ALOGD("Failed to get request pad from %s", ptr->name());
-      }
-      if (sink_pad0) gst_object_unref(sink_pad0);
-    }
-  } while(0);
-}
-
-void MediaInputModule::switch_selector(const MediaInputIntfPtr &ptr, bool open)
-{
-  ALOG_TRACE;
-  do {
-    for (auto it : reqpad_umap_) {
-      if (it.second.indev_main_ != ptr->name()) continue;
-
-      bool is_main_stream = (it.second.indev_main_ == it.second.indev_curr_);
-      if (open && !is_main_stream) {
-        GstPad *sink_pad0 = gst_element_get_static_pad(it.second.inselect_, "sink_0");
-        if (sink_pad0) {
-          g_object_set(G_OBJECT(it.second.inselect_), "active-pad", sink_pad0, NULL);
-          gst_object_unref(sink_pad0);
-        }
-      } else if (!open && is_main_stream) {
-        GstPad *sink_pad1 = gst_element_get_static_pad(it.second.inselect_, "sink_1");
-        if (sink_pad1) {
-          g_object_set(G_OBJECT(it.second.inselect_), "active-pad", sink_pad1, NULL);
-          gst_object_unref(sink_pad1);
-        }
-      }
-    }
-  } while(0);
+  return ret;
 }
 
 } // namespace mmx

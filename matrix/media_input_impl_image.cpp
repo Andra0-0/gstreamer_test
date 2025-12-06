@@ -55,6 +55,9 @@ gint MediaInputImplImage::init()
     g_object_set(G_OBJECT(decoder_),
             "format", 16, // 11-RGBA 16-BGR
             NULL);
+    g_object_set(G_OBJECT(imagefreeze_),
+            "num-buffers", 5,
+            NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
             "format", G_TYPE_STRING, "BGR",
             "width", G_TYPE_INT, 1920,
@@ -78,7 +81,7 @@ gint MediaInputImplImage::init()
     }
 
     // if (!prober_) {
-    //   GstPad *new_pad = gst_element_get_static_pad(videorate_, "src");
+    //   GstPad *new_pad = gst_element_get_static_pad(imagefreeze_, "src");
     //   prober_ = std::make_shared<mmx::IPadProber>(
     //           new_pad, GST_PAD_PROBE_TYPE_BUFFER, mmx::deffunc_videoframe_info);
     //   gst_object_unref(new_pad);
@@ -160,7 +163,7 @@ GstPad* MediaInputImplImage::create_video_src_pad()
     gst_bin_add(GST_BIN(bin_), new_queue);
 
     g_object_set(G_OBJECT(new_queue),
-            "max-size-buffers", 3,
+            "max-size-buffers", 1,
             "max-size-bytes", 0,
             "max-size-time", 0,
             "leaky", 2, // 0-no 1-upstream 2-downstream
