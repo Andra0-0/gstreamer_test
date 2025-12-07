@@ -2,6 +2,7 @@
 
 #include <drm/drm.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include "debug.h"
 
@@ -16,7 +17,7 @@ OutputImplKms::DRM::DRM(const char *device)
   res = drmModeGetResources(fd);
   if (!res) {
     ALOGD("Failed to get DRM resources");
-    close(fd);
+    ::close(fd);
     fd = -1;
     return;
   }

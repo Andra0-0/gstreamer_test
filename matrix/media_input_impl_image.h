@@ -26,7 +26,7 @@ public:
 
   virtual gint pause() override;
 
-  virtual string get_info() override {}
+  virtual string get_info() override;
 
   virtual GstElement* get_bin() override;
 

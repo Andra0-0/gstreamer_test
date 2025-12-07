@@ -79,7 +79,7 @@ gint InputPadSwitch::connect(const MediaInputIntfPtr &stream, StreamType type)
     }
 
     sink_pad_name = "sink_" + std::to_string(type);
-    sink_pad = gst_element_request_pad_simple(selector_, sink_pad_name.c_str());
+    sink_pad = gst_element_get_request_pad(selector_, sink_pad_name.c_str());
     ALOG_BREAK_IF(!sink_pad);
 
     src_pad = stream->get_request_pad(true);
@@ -333,7 +333,7 @@ void MediaInputModule::destroy(gint id)
 
 string MediaInputModule::get_info()
 {
-
+  return "";
 }
 
 MediaInputIntfPtr MediaInputModule::create_videoin_err()
@@ -418,8 +418,8 @@ void MediaInputModule::on_videoin_is_ready(MediaInputIntf *ptr)
 void MediaInputModule::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg)
 {
   ALOG_TRACE;
-  GstElement *elem;
-  GstElementFactory *factory;
+  // GstElement *elem;
+  // GstElementFactory *factory;
 
   do {
     for (auto input : videoin_array_) {

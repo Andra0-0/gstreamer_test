@@ -15,7 +15,7 @@ ConsoleTerminalPtr ConsoleTerminal::instance()
 
 int ConsoleTerminal::thread_loop()
 {
-  
+  return 0;
 }
 
 } // namespace mmx

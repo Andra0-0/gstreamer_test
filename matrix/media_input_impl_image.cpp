@@ -1,5 +1,7 @@
 #include "media_input_impl_image.h"
 
+#include <sstream>
+
 #include "debug.h"
 
 namespace mmx {
@@ -119,6 +121,32 @@ gint MediaInputImplImage::pause()
   } while(0);
 
   return 0;
+}
+
+string MediaInputImplImage::get_info()
+{
+  std::ostringstream oss;
+  GstState state, pending;
+
+  oss << "\n\t============ get_info ============\n"
+      << "\tClass: MediaInputImplImage\n"
+      << "\tID: " << id_ << "\n"
+      << "\tName: " << name_ << "\n";
+
+  if (bin_) {
+    gst_element_get_state(bin_, &state, &pending, 0);
+    oss << "\tBinState cur:" << gst_element_state_get_name(state)
+        << " pending:" << gst_element_state_get_name(pending) << "\n";
+  }
+  if (source_) {
+    gst_element_get_state(source_, &state, &pending, 0);
+    oss << "\tFilesrcState cur:" << gst_element_state_get_name(state)
+        << " pending:" << gst_element_state_get_name(pending) << "\n";
+  }
+
+  oss << "\t==================================";
+
+  return oss.str();
 }
 
 GstElement* MediaInputImplImage::get_bin()
