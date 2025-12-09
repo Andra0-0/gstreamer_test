@@ -5,6 +5,7 @@ set(
   ipad_prober.h
   ithread.h
   meta_message.h
+  video_mixer.h
   output_intf.h
   output_impl_kms.h
   media_input_intf.h
@@ -21,6 +22,7 @@ set(
   ipad_prober.cpp
   ithread.cpp
   meta_message.cpp
+  video_mixer.cpp
   output_impl_kms.cpp
   media_input_intf.cpp
   media_input_impl_image.cpp

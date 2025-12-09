@@ -69,7 +69,7 @@ gint MediaInputImplUridb::init()
     //         "async", FALSE,
     //         NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
-            "format", G_TYPE_STRING, "BGR",
+            "format", G_TYPE_STRING, "RGBA",
             "width", G_TYPE_INT, 1920,
             "height", G_TYPE_INT, 1080,
             // "framerate", GST_TYPE_FRACTION, 30, 1,

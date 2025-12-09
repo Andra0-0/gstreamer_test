@@ -249,6 +249,7 @@ gint InputPadSwitch::sswitch(StreamType type)
 
 MediaInputModule::MediaInputModule()
   : videoin_cnt_(0)
+  , inpad_cnt_(0)
 {
   ALOG_TRACE;
   do {

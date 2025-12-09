@@ -14,6 +14,10 @@ using std::shared_ptr;
 using std::mutex;
 using ConsoleTerminalPtr = shared_ptr<ConsoleTerminal>;
 
+class ConsoleTUI {
+
+};
+
 class ConsoleTerminal : public IThread {
 public:
   static inline ConsoleTerminalPtr instance();
@@ -22,8 +26,15 @@ protected:
   virtual int thread_loop() override;
 
 private:
+  int thread_init();
+
+  int thread_deinit();
+
+private:
   static ConsoleTerminalPtr instance_;
   static mutex ins_lock_;
+
+  ConsoleTUI tui_;
 };
 
 } // namespace mmx

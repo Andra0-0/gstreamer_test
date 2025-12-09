@@ -22,6 +22,11 @@ protected:
   virtual int thread_loop() override;
 
 private:
+  int thread_init();
+
+  int thread_deinit();
+
+private:
   static ConsoleInterfacePtr instance_;
   static mutex ins_lock_;
 };

@@ -33,9 +33,13 @@ public:
 
   virtual void stop_wait();
 
+  virtual pthread_t tid() { return thread_id_; }
+
   virtual const char *name() { return thread_name_.c_str(); }
 
   virtual bool is_running() { return thread_running_; }
+
+  virtual bool is_exit_pending() { return thread_exit_pending_; }
 
 protected:
   virtual int thread_loop() = 0;

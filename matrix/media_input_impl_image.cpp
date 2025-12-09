@@ -55,13 +55,13 @@ gint MediaInputImplImage::init()
             "location", "/home/cat/test/no_signal.jpg",
             NULL);
     g_object_set(G_OBJECT(decoder_),
-            "format", 16, // 11-RGBA 16-BGR
+            "format", 11, // 11-RGBA 16-BGR 23-NV12
             NULL);
-    g_object_set(G_OBJECT(imagefreeze_),
-            "num-buffers", 5,
-            NULL);
+    // g_object_set(G_OBJECT(imagefreeze_),
+    //         "num-buffers", 5,
+    //         NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
-            "format", G_TYPE_STRING, "BGR",
+            "format", G_TYPE_STRING, "RGBA",
             "width", G_TYPE_INT, 1920,
             "height", G_TYPE_INT, 1080,
             "framerate", GST_TYPE_FRACTION, 3, 1, // 3fps
@@ -74,12 +74,12 @@ gint MediaInputImplImage::init()
     }
 
     gst_bin_add_many(GST_BIN(bin_), source_, parser_, decoder_,
-            convert_, imagefreeze_, capsfilter_, videorate_, tee_, NULL);
+            convert_, imagefreeze_, videorate_, capsfilter_, tee_, NULL);
 
     // FIXME: imagefreeze output too much video frame! (30000fps)
     if (!gst_element_link_many(source_, parser_, decoder_, convert_,
-            imagefreeze_, capsfilter_, videorate_, tee_, NULL)) {
-      ALOGD("Failed to link filesrc->mppjpegdec->videoconvert->capsfilter->queue");
+            imagefreeze_, videorate_, capsfilter_, tee_, NULL)) {
+      ALOGD("Failed to link elements");
     }
 
     // if (!prober_) {
@@ -194,7 +194,7 @@ GstPad* MediaInputImplImage::create_video_src_pad()
             "max-size-buffers", 1,
             "max-size-bytes", 0,
             "max-size-time", 0,
-            "leaky", 2, // 0-no 1-upstream 2-downstream
+            "leaky", 0, // 0-no 1-upstream 2-downstream
             NULL);
 
     GstPad *tee_src_pad = gst_element_get_request_pad(tee_, "src_%u");
@@ -213,10 +213,10 @@ GstPad* MediaInputImplImage::create_video_src_pad()
     } else {
       ALOGD("Failed to get src pad");
     }
-    // if (!prober_) {
-    //   prober_ = std::make_shared<mmx::IPadProber>(
-    //           new_pad, GST_PAD_PROBE_TYPE_BUFFER, mmx::deffunc_videoframe_info);
-    // }
+    if (!prober_) {
+      prober_ = std::make_shared<mmx::IPadProber>(
+              new_pad, GST_PAD_PROBE_TYPE_BUFFER, mmx::deffunc_videoframe_info);
+    }
 
     video_pad_cnt_++;
     gst_element_sync_state_with_parent(new_queue);

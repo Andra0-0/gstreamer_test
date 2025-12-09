@@ -1,12 +1,19 @@
 #include "video_mixer.h"
 
+#include <sstream>
+
 #include "debug.h"
+
+namespace mmx {
 
 VideoMixer::VideoMixer()
   : bin_(nullptr)
   , mix_(nullptr)
   , caps_(nullptr)
   , tee_(nullptr)
+  , screen_width_(1920)
+  , screen_height_(1080)
+  , sinkpad_cnt_(0)
 {
 }
 
@@ -39,9 +46,9 @@ gint VideoMixer::init()
             "background", 1, // 1-black
             NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
-            "format", G_TYPE_STRING, "BGR",
-            "width", G_TYPE_INT, SCREEN_WIDTH,
-            "height", G_TYPE_INT, SCREEN_HEIGHT,
+            "format", G_TYPE_STRING, "RGBA",
+            "width", G_TYPE_INT, screen_width_,
+            "height", G_TYPE_INT, screen_height_,
             // "framerate", GST_TYPE_FRACTION, 30, 1,
             NULL);
     if (caps) {
@@ -68,4 +75,238 @@ gint VideoMixer::init()
 gint VideoMixer::deinit()
 {
   // TODO gst_element_factory_make failed?
+}
+
+gint VideoMixer::connect(VideomixConfig &cfg)
+{
+  gint ret = -1;
+  GstElement *glupload, *glconvert;
+  GstPad *src_pad, *sink_pad;
+
+  do {
+    ALOG_BREAK_IF(srcpad_umap_.size() >= kVideomixMaxStream);
+    ALOG_BREAK_IF(cfg.src_pad_ == NULL);
+
+    if (srcpad_umap_.find(GST_PAD_NAME(cfg.src_pad_)) != srcpad_umap_.end()) {
+      ALOGD("VideoMixer connect %s error, already exist connect", GST_PAD_NAME(cfg.src_pad_));
+      break;
+    }
+
+    glupload = gst_element_factory_make("glupload", NULL);
+    ALOG_BREAK_IF(!glupload);
+    glconvert = gst_element_factory_make("glcolorconvert", NULL);
+    ALOG_BREAK_IF(!glconvert);
+    gst_bin_add_many(GST_BIN(bin_), glupload, glconvert, NULL);
+    if (!gst_element_link_many(glupload, glconvert, NULL)) {
+      ALOGD("VideoMixer failed to link elements");
+      break;
+    }
+
+    string ghost_pad_name = "video_sink_" + std::to_string(sinkpad_cnt_);
+    GstPad *ghost_pad = NULL;
+    src_pad = cfg.src_pad_;
+    gst_object_ref(src_pad);
+    sink_pad = gst_element_get_static_pad(glupload, "sink");
+    if (sink_pad) {
+      ghost_pad = gst_ghost_pad_new(ghost_pad_name.c_str(), sink_pad);
+      gst_element_add_pad(bin_, ghost_pad);
+      gst_object_unref(sink_pad);
+      sink_pad = ghost_pad;
+      sinkpad_cnt_++;
+    } else {
+      ALOGD("VideoMixer failed to get pad from glupload");
+      break;
+    }
+    if (gst_pad_link(src_pad, sink_pad) != GST_PAD_LINK_OK) {
+      ALOGD("VideoMixer failed to link pad");
+      break;
+    }
+    gst_object_unref(src_pad);
+    // if (!gst_pad_is_linked(sink_pad)) {
+    //   ALOGD("VideoMixer ghost pad not linked");
+    // }
+    // gst_pad_set_active(sink_pad, TRUE);
+    // if (!gst_pad_is_active(sink_pad)) {
+    //   ALOGD("VideoMixer ghost pad not active");
+    // }
+    src_pad = sink_pad = NULL;
+
+    src_pad = gst_element_get_static_pad(glconvert, "src");
+    ALOG_BREAK_IF(!src_pad);
+    sink_pad = gst_element_get_request_pad(mix_, "sink_%u");
+    ALOG_BREAK_IF(!sink_pad);
+    if (gst_pad_link(src_pad, sink_pad) != GST_PAD_LINK_OK) {
+      ALOGD("VideoMixer failed to link pad");
+      break;
+    }
+    g_object_set(sink_pad,
+            "xpos", cfg.style_.xpos,
+            "ypos", cfg.style_.ypos,
+            "width", cfg.style_.width,
+            "height", cfg.style_.height,
+            "sizing-policy", 1, // 不做拉伸 混合缩放策略
+            NULL);
+    gst_object_unref(src_pad);
+    gst_object_unref(sink_pad);
+
+    srcpad_umap_.emplace(GST_PAD_NAME(cfg.src_pad_), cfg);
+    gst_element_sync_state_with_parent(glupload);
+    gst_element_sync_state_with_parent(glconvert);
+    ret = 0;
+  } while(0);
+
+  if (ret != 0) {
+    if (src_pad) gst_object_unref(src_pad);
+    if (sink_pad) gst_object_unref(sink_pad);
+  }
+
+  return ret;
+}
+
+gint VideoMixer::connect_many(vector<VideomixConfig> &cfg_arr)
+{
+  gint ret = -1;
+
+  do {
+    // TODO
+  } while(0);
+
+  return ret;
+}
+
+gint VideoMixer::disconnect(GstPad *src_pad)
+{
+  do {
+    ALOG_BREAK_IF(srcpad_umap_.find(GST_PAD_NAME(src_pad)) == srcpad_umap_.end());
+  } while(0);
+
+  return 0;
+}
+
+gint VideoMixer::disconnect_all()
+{
+  return 0;
+}
+
+string VideoMixer::get_info()
+{
+  std::ostringstream oss;
+  GstState state, pending;
+
+  oss << "\n\t============ get_info ============\n"
+      << "\tClass: VideoMixer, bin name: " << GST_OBJECT_NAME(bin_) << "\n";
+
+  if (bin_) {
+    gst_element_get_state(bin_, &state, &pending, 0);
+    oss << "\tBinState cur:" << gst_element_state_get_name(state)
+        << " pending:" << gst_element_state_get_name(pending) << "\n";
+  }
+  GstPad *sink_pad = gst_element_get_static_pad(bin_, "video_sink_0");
+  if (sink_pad) {
+    oss << "\tsink_pad active: " << gst_pad_is_active(sink_pad) << " linked: " << gst_pad_is_linked(sink_pad) << "\n";
+    gst_object_unref(sink_pad);
+  } else {
+    oss << "\tError to get video_sink_0\n";
+  }
+  GstPad *src_pad = gst_pad_get_peer(sink_pad);
+  if (src_pad) {
+    oss << "\tGhost pad video_sink_0 linked! peer name: " << GST_PAD_NAME(src_pad) << "\n"
+        << "\tsrc_pad active: " << gst_pad_is_active(src_pad) << " linked: " << gst_pad_is_linked(src_pad) << "\n";
+    gst_object_unref(src_pad);
+  } else {
+    oss << "\tError to get peer pad\n";
+  }
+
+  // sink_pad = gst_element_get_static_pad(mix_, "sink_0");
+  // if (sink_pad) {
+  //   oss << "\tmix_sink_0 active: " << gst_pad_is_active(sink_pad) << " linked: " << gst_pad_is_linked(sink_pad) << "\n";
+  //   gst_object_unref(sink_pad);
+  // } else {
+  //   oss << "\tError to get mix_sink_0\n";
+  // }
+  // src_pad = gst_pad_get_peer(sink_pad);
+  // if (src_pad) {
+  //   oss << "\tmix_sink_0 linked! peer name: " << GST_PAD_NAME(src_pad) << "\n"
+  //       << "\tsrc_pad active: " << gst_pad_is_active(src_pad) << " linked: " << gst_pad_is_linked(src_pad) << "\n";
+  //   gst_object_unref(src_pad);
+  // } else {
+  //   oss << "\tError to get peer pad\n";
+  // }
+
+  oss << "\t==================================";
+
+  return oss.str();
+}
+
+GstPad* VideoMixer::get_request_pad(const gchar *name)
+{
+  GstPad *pad = nullptr;
+
+  do {
+    GstPad *queue_src_pad = gst_element_get_static_pad(queue_, "src");
+    if (queue_src_pad) {
+      pad = gst_ghost_pad_new("video_src_0", queue_src_pad);
+      gst_element_add_pad(bin_, pad);
+      gst_object_unref(queue_src_pad);
+    } else {
+      ALOGD("VideoMixer failed to get queue src pad");
+    }
+  } while(0);
+
+  return pad;
+}
+
+VideomixStyle VideoMixer::get_style_from_layout(VideomixLayout layout, gint index)
+{
+  VideomixStyle style;
+
+  switch (layout) {
+    case kLayoutInvalid:
+      ALOGD("Invalid paramter layout: %d", layout);
+      break;
+    case kLayoutSingleScreen:
+      style.xpos = 0;
+      style.ypos = 0;
+      style.width = screen_width_;
+      style.height = screen_height_;
+      break;
+    case kLayoutDualScreen:
+      if (index == 0) { // 左半屏
+        style.xpos = 0;
+        style.ypos = 0;
+        style.width = screen_width_ / 2;
+        style.height = screen_height_;
+      } else { // 右半屏
+        style.xpos = screen_width_ / 2;
+        style.ypos = 0;
+        style.width = screen_width_ / 2;
+        style.height = screen_height_;
+      }
+      break;
+    case kLayoutThreeScreen: // 三分屏
+      if (index == 0) { // 左侧主画面，占据 2/3 宽度，全高
+        style.xpos = 0;
+        style.ypos = 0;
+        style.width = screen_width_ * 2 / 3;
+        style.height = screen_height_;
+      } else if (index == 1) { // 右上画面，占据右 1/3 宽，1/2 高
+        style.xpos = screen_width_ * 2 / 3;
+        style.ypos = 90;
+        style.width = screen_width_ / 3;
+        style.height = screen_height_ / 2;
+      } else { // 右下画面，占据右 1/3 宽，1/2 高
+        style.xpos = screen_width_ * 2 / 3;
+        style.ypos = 90 + 360;
+        style.width = screen_width_ / 3;
+        style.height = screen_height_ / 2;
+      }
+      break;
+    default:
+      ALOGD("Unknown paramter layout: %d", layout);
+      break;
+  }
+
+  return style;
+}
+
 }

@@ -9,6 +9,7 @@
 // #include "input_intf.h"
 #include "media_input_intf.h"
 #include "output_intf.h"
+#include "video_mixer.h"
 
 #define MEDIA_MATRIX_DOT_DIR "./dot"
 
@@ -59,7 +60,7 @@ private:
 
   // Inputs encapsulated as classes; each input provides a GstBin with a "src" pad
   std::vector<MediaInputIntfPtr> inputs_;
-
+  VideoMixerPtr mixer_;
   std::vector<OutputIntfPtr> outputs_;
 
   GstBus *bus_;
