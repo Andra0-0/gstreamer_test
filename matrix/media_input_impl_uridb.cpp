@@ -58,8 +58,8 @@ gint MediaInputImplUridb::init()
 
     g_object_set(G_OBJECT(source_),
             // "uri", "v4l2:///dev/video0",
-            // "uri", "file:///home/cat/test/test.mp4",
-            "uri", "rtsp://192.168.3.137:8554/h264ESVideoTest",
+            "uri", "file:///home/cat/test/test.mp4",
+            // "uri", "rtsp://192.168.3.137:8554/h264ESVideoTest",
             // "uri", "rtsp://192.168.3.137:8554/mpeg2TransportStreamTest",
             // "uri", "http://distribution.bbb3d.renderfarming.net/video/mp4/bbb_sunflower_1080p_60fps_normal.mp4",
             NULL);
@@ -87,7 +87,7 @@ gint MediaInputImplUridb::init()
 
     g_signal_connect(source_, "pad-added", G_CALLBACK(on_uridb_pad_added), this);
     // g_signal_connect(source_, "no-more-pads", G_CALLBACK(on_uridb_no_more_pads), this);
-    // g_signal_connect(source_, "element-added", G_CALLBACK(on_uridb_element_added), this);
+    g_signal_connect(source_, "element-added", G_CALLBACK(on_uridb_element_added), this);
     g_signal_connect(source_, "unknown-type", G_CALLBACK(on_uridb_unknown_type), this);
 
     ret = 0;
@@ -262,14 +262,16 @@ void MediaInputImplUridb::on_uridb_no_more_pads(GstElement *obj, void *data)
 
 void MediaInputImplUridb::on_uridb_element_added(GstElement *obj, GstElement *elem, void *data)
 {
-  ALOG_TRACE;
+  // ALOG_TRACE;
   MediaInputImplUridb *const self = static_cast<MediaInputImplUridb*>(data);
   GstElementFactory *factory = gst_element_get_factory(elem);
 
   if (factory) {
     if (g_strcmp0(gst_plugin_feature_get_name(factory), "mppvideodec") == 0) {
       g_object_set(elem,
-              "format", 16, // RGBA:11 RGB:15 BGR:16
+              "format", 11, // RGBA:11 RGB:15 BGR:16
+              "width", 1920,
+              "height", 1080,
               "dma-feature", TRUE,
               // "disable-dts", TRUE, // try to disable dts, might help mpp generate pts
               // "max-lateness", 200000000, // 200ms

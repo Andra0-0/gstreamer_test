@@ -79,6 +79,7 @@ private:
 
   GstPad *pad_; // MediaInputModule bin ghost-pad
   GstElement *selector_; // MediaInputModule bin input-selector
+  GstElement *queue_; // MediaInputModule bin queue
 
   string stream_main_; // Name of main stream
   string stream_curr_; // Name of current stream
@@ -169,7 +170,7 @@ private:
 
   GstElement *videoin_bin_;
   // vector<GstElement*> videoinput_selector_;
-  /*Debug*/IPadProberPtr prober_;
+  /*Debug*///IPadProberPtr prober_;
 };
 
 } // namespace mmx

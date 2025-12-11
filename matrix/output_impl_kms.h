@@ -47,7 +47,7 @@ private:
 
   std::unique_ptr<DRM> p_drm_;
 
-  /*Debug*/mmx::IPadProberPtr prober_;
+  /*Debug*///mmx::IPadProberPtr prober_;
 };
 
 #endif // OUTPUT_IMPL_KMS_H

@@ -213,10 +213,10 @@ GstPad* MediaInputImplImage::create_video_src_pad()
     } else {
       ALOGD("Failed to get src pad");
     }
-    if (!prober_) {
-      prober_ = std::make_shared<mmx::IPadProber>(
-              new_pad, GST_PAD_PROBE_TYPE_BUFFER, mmx::deffunc_videoframe_info);
-    }
+    // if (!prober_) {
+    //   prober_ = std::make_shared<mmx::IPadProber>(
+    //           new_pad, GST_PAD_PROBE_TYPE_BUFFER, mmx::deffunc_videoframe_info);
+    // }
 
     video_pad_cnt_++;
     gst_element_sync_state_with_parent(new_queue);

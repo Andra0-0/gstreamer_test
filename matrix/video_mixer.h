@@ -38,6 +38,7 @@ struct VideomixStyle {
 struct VideomixConfig {
   gint index_;
   GstPad *src_pad_;
+  GstPad *sink_pad_;
   VideomixStyle style_;
   VideomixLayout layout_;
 };
@@ -79,6 +80,7 @@ public:
 private:
   GstElement *bin_;
   GstElement *mix_;
+  /*Debug*/GstElement *cvt_;
   GstElement *caps_;
   GstElement *tee_;
   GstElement *queue_;

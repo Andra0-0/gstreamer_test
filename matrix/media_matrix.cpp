@@ -19,6 +19,9 @@ std::shared_ptr<MediaMatrix> MediaMatrix::instance_ = nullptr;
 MediaMatrix::MediaMatrix()
   : exit_pending_(false)
 {
+  // 开启RGA日志
+  // g_setenv("ROCKCHIP_RGA_LOG", "1", TRUE);
+
   // video convert 使用RGA加速
   g_setenv("GST_DEBUG_CONVERT_USE_RGA", "1", TRUE);
   g_setenv("GST_VIDEO_CONVERT_ONLY_RGA3", "1", TRUE);
@@ -26,7 +29,7 @@ MediaMatrix::MediaMatrix()
   // debug 环境变量
   // g_setenv("GST_DEBUG","3", TRUE);
   // g_setenv("GST_DEBUG","1,rgavideoconvert:5", TRUE);
-  g_setenv("GST_DEBUG","1,inputselector:5", TRUE);
+  g_setenv("GST_DEBUG","1", TRUE);
   // g_setenv("GST_DEBUG_FILE","/tmp/mmdebug.log", TRUE);
   g_setenv("GST_DEBUG_DUMP_DOT_DIR", MEDIA_MATRIX_DOT_DIR, TRUE);
 
@@ -54,40 +57,42 @@ gint MediaMatrix::init(int argc, char *argv[])
 
   do {
     MediaInputModulePtr input_module = MediaInputModule::instance();
-    // MediaInputIntfPtr v4l2in = MediaInputModule::instance()->create(VideoInputType::kVideoInputHdmi);
-    MediaInputIntfPtr v4l2in;
-    
-    v4l2in = input_module->create(VideoInputType::kVideoInputUridb);
-    // v4l2in = input_module->create(VideoInputType::kVideoInputHdmi);
-    ALOGD("%s", v4l2in->name());
-    GstPad *src_pad0 = input_module->get_request_pad(v4l2in);
-    if (!src_pad0) {
+
+    MediaInputIntfPtr input1;    
+    // input1 = input_module->create(VideoInputType::kVideoInputUridb);
+    input1 = input_module->create(VideoInputType::kVideoInputHdmi);
+    ALOGD("%s", input1->name());
+    GstPad *src_pad1 = input_module->get_request_pad(input1);
+    if (!src_pad1) {
       ALOGD("Error! input module return null pad pointer");
     }
+    inputs_.push_back(input1);
+
+    // MediaInputIntfPtr input2;    
+    // input2 = input_module->create(VideoInputType::kVideoInputUridb);
+    // // input2 = input_module->create(VideoInputType::kVideoInputHdmi);
+    // ALOGD("%s", input2->name());
+    // GstPad *src_pad2 = input_module->get_request_pad(input2);
+    // if (!src_pad2) {
+    //   ALOGD("Error! input module return null pad pointer");
+    // }
+    // inputs_.push_back(input2);
+
+    // MediaInputIntfPtr input3;    
+    // input3 = input_module->create(VideoInputType::kVideoInputUridb);
+    // // input3 = input_module->create(VideoInputType::kVideoInputHdmi);
+    // ALOGD("%s", input3->name());
+    // GstPad *src_pad3 = input_module->get_request_pad(input3);
+    // if (!src_pad3) {
+    //   ALOGD("Error! input module return null pad pointer");
+    // }
+    // inputs_.push_back(input3);
 
     mixer_ = std::make_shared<VideoMixer>();
     mixer_->init();
 
-    VideomixConfig cfg;
-    cfg.index_ = 0;
-    cfg.layout_ = VideomixLayout::kLayoutSingleScreen;
-    cfg.src_pad_ = src_pad0;
-    cfg.style_ = mixer_->get_style_from_layout(cfg.layout_, cfg.index_);
-    mixer_->connect(cfg);
-    ALOGD("%s", mixer_->get_info().c_str());
-    if (src_pad0) {
-      ALOGD("src_pad0:%s active:%d linked:%d",
-              GST_PAD_NAME(src_pad0), gst_pad_is_active(src_pad0), gst_pad_is_linked(src_pad0));
-    } else {
-      ALOGD("ERRRRRRRRRRRRRRROORRRR");
-    }
-
     OutputIntfPtr kmsout = std::make_shared<OutputImplKms>(OutputImplKms::HDMI_TX_0);
-
-    inputs_.push_back(v4l2in);
-    /* Keep the output object alive by storing it in outputs_ vector */
     outputs_.push_back(kmsout);
-    // inputs_.push_back(filein);
 
     /* Build the pipeline: add input bins, compositor and sink */
     GstElement *input_module_bin = input_module->get_bin();
@@ -105,6 +110,68 @@ gint MediaMatrix::init(int argc, char *argv[])
       break;
     }
 
+    // 设置管道状态READY
+    ret = gst_element_set_state(pipeline_, GST_STATE_READY);
+    if (ret == GST_STATE_CHANGE_FAILURE) {
+      ALOGD("Unable to set the pipeline to the ready state.");
+      gst_object_unref (pipeline_);
+      return -1;
+    } else {
+      ALOGD("Set pipeline to ready state success");
+    }
+
+    // 添加输入流到混流
+    VideomixConfig cfg;
+    cfg.index_ = 0;
+    cfg.layout_ = VideomixLayout::kLayoutSingleScreen;
+    cfg.src_pad_ = src_pad1;
+    cfg.style_ = mixer_->get_style_from_layout(cfg.layout_, cfg.index_);
+    mixer_->connect(cfg);
+    GstPadLinkReturn res = gst_pad_link(cfg.src_pad_, cfg.sink_pad_);
+    if (res != GST_PAD_LINK_OK) {
+      ALOGD("Failed to link src pad to sink sink pad, res:%d", res);
+    }
+    // VideomixConfig cfg;
+    // cfg.index_ = 0;
+    // cfg.layout_ = VideomixLayout::kLayoutThreeScreen;
+    // cfg.src_pad_ = src_pad1;
+    // cfg.style_ = mixer_->get_style_from_layout(cfg.layout_, cfg.index_);
+    // mixer_->connect(cfg);
+    // GstPadLinkReturn res = gst_pad_link(cfg.src_pad_, cfg.sink_pad_);
+    // if (res != GST_PAD_LINK_OK) {
+    //   ALOGD("Failed to link src pad to sink sink pad, res:%d", res);
+    // }
+    // VideomixConfig cfg2;
+    // cfg2.index_ = 1;
+    // cfg2.layout_ = VideomixLayout::kLayoutThreeScreen;
+    // cfg2.src_pad_ = src_pad2;
+    // cfg2.style_ = mixer_->get_style_from_layout(cfg2.layout_, cfg2.index_);
+    // mixer_->connect(cfg2);
+    // res = gst_pad_link(cfg2.src_pad_, cfg2.sink_pad_);
+    // if (res != GST_PAD_LINK_OK) {
+    //   ALOGD("Failed to link src pad to sink sink pad, res:%d", res);
+    // }
+    // VideomixConfig cfg3;
+    // cfg3.index_ = 2;
+    // cfg3.layout_ = VideomixLayout::kLayoutThreeScreen;
+    // cfg3.src_pad_ = src_pad3;
+    // cfg3.style_ = mixer_->get_style_from_layout(cfg3.layout_, cfg3.index_);
+    // mixer_->connect(cfg3);
+    // res = gst_pad_link(cfg3.src_pad_, cfg3.sink_pad_);
+    // if (res != GST_PAD_LINK_OK) {
+    //   ALOGD("Failed to link src pad to sink sink pad, res:%d", res);
+    // }
+
+    // // 设置管道状态PAUSED
+    ret = gst_element_set_state(pipeline_, GST_STATE_PAUSED);
+    if (ret == GST_STATE_CHANGE_FAILURE) {
+      ALOGD("Unable to set the pipeline to the paused state.");
+      gst_object_unref (pipeline_);
+      return -1;
+    } else {
+      ALOGD("Set pipeline to paused state success");
+    }
+
     /* Start playing */
     ret = gst_element_set_state (pipeline_, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
@@ -114,18 +181,10 @@ gint MediaMatrix::init(int argc, char *argv[])
     } else {
       ALOGD("MediaMatrix pipeline set state playing success");
     }
-    // bus_ = gst_element_get_bus (pipeline_);
 
     /* 在这里生成DOT文件 */
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_),
         GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-init");
-    ALOGD("%s", mixer_->get_info().c_str());
-    if (src_pad0) {
-      ALOGD("src_pad0:%s active:%d linked:%d",
-              GST_PAD_NAME(src_pad0), gst_pad_is_active(src_pad0), gst_pad_is_linked(src_pad0));
-    } else {
-      ALOGD("ERRRRRRRRRRRRRRROORRRR");
-    }
     ret = 0;
   } while(0);
 

@@ -66,7 +66,7 @@ private:
 
   GstElement *audio_tee_;
 
-  /*Debug*/IPadProberPtr prober_;
+  /*Debug*///IPadProberPtr prober_;
 
   // GstElement *fakesink_;
   // GstElement *fakequeue_;

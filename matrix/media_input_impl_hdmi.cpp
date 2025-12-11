@@ -47,7 +47,7 @@ gint MediaInputImplHdmi::init()
 
     g_object_set(G_OBJECT(source_),
             "device", "/dev/video0",
-            "io-mode", 4,
+            "io-mode", 4, // 4-DMABUF
             NULL);
     // g_object_set(G_OBJECT(queue_),
     //         "max-size-buffers", 50,
@@ -56,7 +56,7 @@ gint MediaInputImplHdmi::init()
     //         "leaky", 2,
     //         NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
-            "format", G_TYPE_STRING, "BGR",
+            "format", G_TYPE_STRING, "RGBA",
             "width", G_TYPE_INT, 1920,
             "height", G_TYPE_INT, 1080,
             "framerate", GST_TYPE_FRACTION, 30, 1,

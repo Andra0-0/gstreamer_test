@@ -23,28 +23,37 @@ InputPadSwitch::InputPadSwitch(GstElement *bin, const gchar *name)
   , is_curr_mainstream_(false)
   , pad_(nullptr)
   , selector_(nullptr)
+  , queue_(nullptr)
 {
   do {
     selector_ = gst_element_factory_make("input-selector", nullptr);
     ALOG_BREAK_IF(!selector_);
     // gst_object_ref(selector_);
+    queue_ = gst_element_factory_make("queue", nullptr);
+    ALOG_BREAK_IF(!queue_);
+
     g_object_set(G_OBJECT(selector_),
             "drop-backwards", TRUE,
             // "sync-mode", 1,
             // "sync-streams", FALSE,
             NULL);
 
-    gst_bin_add(GST_BIN(bin), selector_);
+    gst_bin_add_many(GST_BIN(bin), selector_, queue_, NULL);
 
-    GstPad *selector_src_pad = gst_element_get_static_pad(selector_, "src");
-    if (selector_src_pad) {
-      pad_ = gst_ghost_pad_new(name, selector_src_pad);
+    if (!gst_element_link_many(selector_, queue_, NULL)) {
+      ALOGD("InputPadSwitch failed to link elements");
+    }
+
+    GstPad *queue_src_pad = gst_element_get_static_pad(queue_, "src");
+    if (queue_src_pad) {
+      pad_ = gst_ghost_pad_new(name, queue_src_pad);
       gst_element_add_pad(bin, pad_);
-      gst_object_unref(selector_src_pad);
+      gst_object_unref(queue_src_pad);
     } else {
       ALOGD("Fatel error, get input-selector src pad failed");
     }
     gst_element_sync_state_with_parent(selector_);
+    gst_element_sync_state_with_parent(queue_);
   } while(0);
 }
 
@@ -139,11 +148,12 @@ gint InputPadSwitch::connect(const MediaInputIntfPtr &stream, StreamType type)
  */
 gint InputPadSwitch::reconnect(const MediaInputIntfPtr &stream, StreamType type)
 {
-  GstPad *src_pad, *sink_pad;
+  GstPad *src_pad = nullptr, *sink_pad = nullptr;
   GstPadLinkReturn res;
 
   do {
     ALOG_BREAK_IF(type != kTypeStreamMain);
+    if (stream_main_ != stream->name()) break;
 
     sink_pad = gst_element_get_static_pad(selector_, "sink_0");
     if (!sink_pad) {

@@ -98,7 +98,7 @@ OutputImplKms::OutputImplKms(hdmi_tx_port port)
             "leaky", 2, // 0-no 1-upstream 2-downstream
             NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
-            "format", G_TYPE_STRING, "BGR",
+            "format", G_TYPE_STRING, "RGBA",
             NULL);
     if (caps) {
       g_object_set(G_OBJECT(capsfilter_), "caps", caps, NULL);
@@ -121,6 +121,7 @@ OutputImplKms::OutputImplKms(hdmi_tx_port port)
       // }
       GstPad *ghost = gst_ghost_pad_new("sink", pad);
       gst_element_add_pad(bin_, ghost);
+      gst_pad_set_active(ghost, TRUE);
       gst_object_unref(pad);
     } else {
       ALOGD("Failed to get tee sink pad");
