@@ -1,5 +1,5 @@
-#ifndef MATRIX_META_MESSAGE_H
-#define MATRIX_META_MESSAGE_H
+#ifndef MATRIX_I_MESSAGE_H
+#define MATRIX_I_MESSAGE_H
 
 #include <string>
 #include <memory>
@@ -8,14 +8,15 @@
 namespace mmx {
 
 struct Attribute;
-class MetaMessage;
+class IMessage;
+class IMessageThread;
 
 using std::string;
 using std::shared_ptr;
 using std::unordered_map;
 using string_p = string*;
 using AttributePtr = shared_ptr<Attribute>;
-using MetaMessagePtr = shared_ptr<MetaMessage>;
+using IMessagePtr = shared_ptr<IMessage>;
 
 struct Attribute {
 public:
@@ -59,10 +60,16 @@ public:
   AttrType type_;
 };
 
-class MetaMessage {
+class IMessage : public std::enable_shared_from_this<IMessage> {
 public:
-  MetaMessage();
-  ~MetaMessage();
+  IMessage();
+  ~IMessage();
+
+  void send(uint64_t delay_us=0);
+  void send(IMessageThread *const thread, uint64_t delay_us=0);
+
+  pthread_t dst_tid() const { return dst_tid_; }
+  uint64_t dst_time() const { return dst_time_; }
 
   void set_bool(const char *name, bool value);
   void set_int32(const char *name, int32_t value);
@@ -80,10 +87,14 @@ public:
 
 protected:
   void emplace_attr(const char *name, AttributePtr &&attr);
+
 private:
-  unordered_map<const char *, AttributePtr> umap_attr_;
+  unordered_map<const char*, AttributePtr> umap_attr_;
+
+  pthread_t   dst_tid_;
+  uint64_t    dst_time_; // us
 };
 
 }
 
-#endif // MATRIX_META_MESSAGE_H
+#endif // MATRIX_I_MESSAGE_H

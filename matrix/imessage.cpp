@@ -1,54 +1,81 @@
-#include "meta_message.h"
+#include "imessage.h"
+
+#include <sys/time.h>
+
+#include "imessage_thread_manager.h"
 
 namespace mmx {
 
-MetaMessage::MetaMessage()
+static inline uint64_t get_current_time_us()
+{
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return tv.tv_sec * 1000000ULL + tv.tv_usec;
+}
+
+IMessage::IMessage()
+  : dst_tid_(0)
+  , dst_time_(0)
 {
 
 }
 
-MetaMessage::~MetaMessage()
+IMessage::~IMessage()
 {
   
 }
 
-void MetaMessage::set_bool(const char *name, bool value)
+void IMessage::send(uint64_t delay_us)
+{
+  dst_tid_ = pthread_self();
+  dst_time_ = get_current_time_us() + delay_us;
+  IMessageThreadManager::instance()->send_message(shared_from_this(), delay_us);
+}
+
+void IMessage::send(IMessageThread *const thread, uint64_t delay_us)
+{
+  dst_tid_ = thread->tid();
+  dst_time_ = get_current_time_us() + delay_us;
+  IMessageThreadManager::instance()->send_message(shared_from_this(), delay_us);
+}
+
+void IMessage::set_bool(const char *name, bool value)
 {
   AttributePtr attr = std::make_shared<Attribute>(name, value, Attribute::kAttrTypeBool);
   emplace_attr(name, std::move(attr));
 }
 
-void MetaMessage::set_int32(const char *name, int32_t value)
+void IMessage::set_int32(const char *name, int32_t value)
 {
   AttributePtr attr = std::make_shared<Attribute>(name, value, Attribute::kAttrTypeInt32);
   emplace_attr(name, std::move(attr));
 }
 
-void MetaMessage::set_int64(const char *name, int64_t value)
+void IMessage::set_int64(const char *name, int64_t value)
 {
   AttributePtr attr = std::make_shared<Attribute>(name, value, Attribute::kAttrTypeInt64);
   emplace_attr(name, std::move(attr));
 }
 
-void MetaMessage::set_sizet(const char *name, size_t value)
+void IMessage::set_sizet(const char *name, size_t value)
 {
   AttributePtr attr = std::make_shared<Attribute>(name, value, Attribute::kAttrTypeSizet);
   emplace_attr(name, std::move(attr));
 }
 
-void MetaMessage::set_float(const char *name, float value)
+void IMessage::set_float(const char *name, float value)
 {
   AttributePtr attr = std::make_shared<Attribute>(name, value, Attribute::kAttrTypeFloat);
   emplace_attr(name, std::move(attr));
 }
 
-void MetaMessage::set_string(const char *name, const string &value)
+void IMessage::set_string(const char *name, const string &value)
 {
   AttributePtr attr = std::make_shared<Attribute>(name, value, Attribute::kAttrTypeString);
   emplace_attr(name, std::move(attr));
 }
 
-bool MetaMessage::find_bool(const char *name, bool &value)
+bool IMessage::find_bool(const char *name, bool &value)
 {
   auto it = umap_attr_.find(name);
   if (it != umap_attr_.end() && it->second->type_ == Attribute::kAttrTypeBool) {
@@ -58,7 +85,7 @@ bool MetaMessage::find_bool(const char *name, bool &value)
   return false;
 }
 
-bool MetaMessage::find_int32(const char *name, int32_t &value)
+bool IMessage::find_int32(const char *name, int32_t &value)
 {
   auto it = umap_attr_.find(name);
   if (it != umap_attr_.end() && it->second->type_ == Attribute::kAttrTypeInt32) {
@@ -68,7 +95,7 @@ bool MetaMessage::find_int32(const char *name, int32_t &value)
   return false;
 }
 
-bool MetaMessage::find_int64(const char *name, int64_t &value)
+bool IMessage::find_int64(const char *name, int64_t &value)
 {
   auto it = umap_attr_.find(name);
   if (it != umap_attr_.end() && it->second->type_ == Attribute::kAttrTypeInt64) {
@@ -78,7 +105,7 @@ bool MetaMessage::find_int64(const char *name, int64_t &value)
   return false;
 }
 
-bool MetaMessage::find_sizet(const char *name, size_t &value)
+bool IMessage::find_sizet(const char *name, size_t &value)
 {
   auto it = umap_attr_.find(name);
   if (it != umap_attr_.end() && it->second->type_ == Attribute::kAttrTypeSizet) {
@@ -88,7 +115,7 @@ bool MetaMessage::find_sizet(const char *name, size_t &value)
   return false;
 }
 
-bool MetaMessage::find_float(const char *name, float &value)
+bool IMessage::find_float(const char *name, float &value)
 {
   auto it = umap_attr_.find(name);
   if (it != umap_attr_.end() && it->second->type_ == Attribute::kAttrTypeFloat) {
@@ -98,7 +125,7 @@ bool MetaMessage::find_float(const char *name, float &value)
   return false;
 }
 
-bool MetaMessage::find_string(const char *name, string &value)
+bool IMessage::find_string(const char *name, string &value)
 {
   auto it = umap_attr_.find(name);
   if (it != umap_attr_.end() && it->second->type_ == Attribute::kAttrTypeString) {
@@ -108,7 +135,7 @@ bool MetaMessage::find_string(const char *name, string &value)
   return false;
 }
 
-void MetaMessage::emplace_attr(const char *name, AttributePtr &&attr)
+void IMessage::emplace_attr(const char *name, AttributePtr &&attr)
 {
   auto it = umap_attr_.find(name);
   if (it != umap_attr_.end()) {

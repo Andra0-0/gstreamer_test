@@ -6,7 +6,6 @@
 #include <memory>
 
 #include "noncopyable.h"
-#include "meta_message.h"
 
 namespace mmx {
 
@@ -67,7 +66,7 @@ public:
    */
   virtual GstPad* get_request_pad(bool is_video) = 0;
 
-  virtual gint set_property(const string &name, const MetaMessagePtr &msg) { return 0; }
+  virtual gint set_property(const string &name) { return 0; }
 
   virtual gint id() { return id_; }
 

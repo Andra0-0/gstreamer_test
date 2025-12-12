@@ -91,7 +91,7 @@ int IThread::thread_entry_impl(void *data)
   int ret;
 
   do {
-    if (self->thread_exit_pending_) break;
+    // if (self->thread_exit_pending_) break;
 
     ret = self->thread_loop();
     if (ret != 0 || self->thread_exit_pending_) {

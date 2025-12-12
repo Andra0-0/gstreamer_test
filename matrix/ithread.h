@@ -52,14 +52,14 @@ private:
   int set_thread_name(const char *name);
 
 private:
-  atomic<bool> thread_exit_pending_;
-  atomic<bool> thread_running_;
+  atomic<bool>        thread_exit_pending_;
+  atomic<bool>        thread_running_;
 
-  pthread_t thread_id_;
-  string thread_name_;
+  pthread_t           thread_id_;
+  string              thread_name_;
 
-  condition_variable thread_cond_;
-  mutex thread_lock_;
+  condition_variable  thread_cond_;
+  mutex               thread_lock_;
 };
 
 } // namespace mmx
