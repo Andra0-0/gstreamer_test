@@ -5,6 +5,8 @@
 #include <memory>
 #include <unordered_map>
 
+#include "imessage_type.h"
+
 namespace mmx {
 
 struct Attribute;
@@ -62,12 +64,14 @@ public:
 
 class IMessage : public std::enable_shared_from_this<IMessage> {
 public:
-  IMessage();
+  explicit IMessage(uint32_t what);
+  IMessage(uint32_t what, IMessageThread *const dst);
   ~IMessage();
 
   void send(uint64_t delay_us=0);
-  void send(IMessageThread *const thread, uint64_t delay_us=0);
+  // void send(IMessageThread *const dst, uint64_t delay_us=0);
 
+  uint32_t what() const { return what_; }
   pthread_t dst_tid() const { return dst_tid_; }
   uint64_t dst_time() const { return dst_time_; }
 
@@ -90,9 +94,9 @@ protected:
 
 private:
   unordered_map<const char*, AttributePtr> umap_attr_;
-
+  uint32_t    what_;
   pthread_t   dst_tid_;
-  uint64_t    dst_time_; // us
+  uint64_t    dst_time_; // ns
 };
 
 }

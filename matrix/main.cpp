@@ -2,11 +2,23 @@
 #include <csignal>
 
 #include "media_matrix.h"
+#include "imessage_thread_manager.h"
 #include "debug.h"
 
-static void handle_signal(int /*sig*/) {
-  /* Only set an atomic flag here — do not call non-async-signal-safe functions. */
+void init_all_modules()
+{
+  mmx::IMessageThreadManager::instance();
+  mmx::MediaMatrix::instance();
+}
+
+void exit_all_modules()
+{
+  mmx::IMessageThreadManager::instance()->stop();
   mmx::MediaMatrix::instance()->exit_pending();
+}
+
+static void handle_signal(int sigint) {
+  exit_all_modules();
 }
 
 int main(int argc, char *argv[]) {
@@ -19,6 +31,8 @@ int main(int argc, char *argv[]) {
   sa.sa_flags = 0;
   sigaction(SIGINT, &sa, NULL);  // CTRL+C
   sigaction(SIGTERM, &sa, NULL); // kill
+
+  init_all_modules();
 
   auto media_matrix = mmx::MediaMatrix::instance();
   ret = media_matrix->init(argc, argv);

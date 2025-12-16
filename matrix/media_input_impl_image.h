@@ -32,7 +32,7 @@ public:
 
   virtual GstPad* get_request_pad(bool is_video) override;
 
-  virtual gint set_property(const string &name, const MetaMessagePtr &msg) override;
+  virtual gint set_property(const IMessagePtr &msg) override;
 
 protected:
   GstPad* create_video_src_pad();

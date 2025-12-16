@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "noncopyable.h"
+#include "imessage.h"
 
 namespace mmx {
 
@@ -66,7 +67,7 @@ public:
    */
   virtual GstPad* get_request_pad(bool is_video) = 0;
 
-  virtual gint set_property(const string &name) { return 0; }
+  virtual gint set_property(const IMessagePtr &msg) { return 0; }
 
   virtual gint id() { return id_; }
 
@@ -78,11 +79,13 @@ public:
 
   friend class MediaInputModule;
 protected:
-  gint id_; // 标识id，MediaInputModule生成
-  string name_; // 标识名，MediaInputModule生成
-  string uri_; // 资源地址
-  string src_name_; // 用户命名输入源
-  gint state_; // 输入源状态
+  gint    id_; // 标识id，MediaInputModule生成
+  gint    state_; // 输入源状态
+  string  uri_; // 资源地址
+  string  name_; // 标识名，MediaInputModule生成
+  string  src_name_; // 用户命名输入源
+  gint    width_; // 视频宽度
+  gint    height_; // 视频高度
 };
 
 } // namespace mmx

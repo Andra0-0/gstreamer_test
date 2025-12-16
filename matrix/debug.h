@@ -102,12 +102,12 @@ public:
   IFuncTrace(const char *function, const char *file_and_line)
    : function_(function), file_and_line_(file_and_line) {
 #if DEBUG_ENABLE
-    ALOGI("Enter %s,%s", function_, file_and_line_);
+    ALOGI("Enter %s,@\033[2;3m%s\033[0m", function_, file_and_line_);
 #endif
   }
   ~IFuncTrace() {
 #if DEBUG_ENABLE
-    ALOGI("Leave %s,%s", function_, file_and_line_);
+    ALOGI("Leave %s,@\033[2;3m%s\033[0m", function_, file_and_line_);
 #endif
   }
 private:

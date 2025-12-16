@@ -17,8 +17,10 @@ MediaInputImplUridb::MediaInputImplUridb()
   , audio_tee_(nullptr)
   , video_pad_cnt_(0)
   , video_linked_(false)
+  , pending_width_(1920)
+  , pending_height_(1080)
 {
-  ALOG_TRACE;
+  // ALOG_TRACE;
 }
 
 MediaInputImplUridb::~MediaInputImplUridb()
@@ -32,6 +34,8 @@ gint MediaInputImplUridb::init()
   gint ret = -1;
 
   do {
+    ALOG_BREAK_IF(uri_.empty());
+
     bin_ = gst_bin_new(name_.c_str());
     ALOG_BREAK_IF(!bin_);
 
@@ -57,8 +61,9 @@ gint MediaInputImplUridb::init()
     // ALOG_BREAK_IF(!fakequeue_);
 
     g_object_set(G_OBJECT(source_),
+            "uri", uri_.c_str(),
             // "uri", "v4l2:///dev/video0",
-            "uri", "file:///home/cat/test/test.mp4",
+            // "uri", "file:///home/cat/test/test.mp4",
             // "uri", "rtsp://192.168.3.137:8554/h264ESVideoTest",
             // "uri", "rtsp://192.168.3.137:8554/mpeg2TransportStreamTest",
             // "uri", "http://distribution.bbb3d.renderfarming.net/video/mp4/bbb_sunflower_1080p_60fps_normal.mp4",
@@ -70,8 +75,8 @@ gint MediaInputImplUridb::init()
     //         NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
             "format", G_TYPE_STRING, "RGBA",
-            "width", G_TYPE_INT, 1920,
-            "height", G_TYPE_INT, 1080,
+            "width", G_TYPE_INT, width_,
+            "height", G_TYPE_INT, height_,
             // "framerate", GST_TYPE_FRACTION, 30, 1,
             NULL);
     if (caps) {
@@ -163,16 +168,6 @@ string MediaInputImplUridb::get_info()
     oss << "\tvideo_tee_ cur:" << gst_element_state_get_name(state)
         << " pending:" << gst_element_state_get_name(pending) << "\n";
   }
-  // if (fakequeue_) {
-  //   gst_element_get_state(fakequeue_, &state, &pending, 0);
-  //   oss << "\tfakequeue_ cur:" << gst_element_state_get_name(state)
-  //       << " pending:" << gst_element_state_get_name(pending) << "\n";
-  // }
-  // if (fakesink_) {
-  //   gst_element_get_state(fakesink_, &state, &pending, 0);
-  //   oss << "\tfakesink_ cur:" << gst_element_state_get_name(state)
-  //       << " pending:" << gst_element_state_get_name(pending) << "\n";
-  // }
 
   oss << "\t==================================";
 
@@ -204,15 +199,26 @@ GstPad* MediaInputImplUridb::get_request_pad(bool is_video)
   return pad;
 }
 
-gint MediaInputImplUridb::set_property(const string &name, const MetaMessagePtr &msg)
+gint MediaInputImplUridb::set_property(const IMessagePtr &msg)
 {
+  do {
+    if (msg->what() == IMSG_URIDB_SETPROPERTY) {
+      int width = 0, height = 0;
+      string uri;
+      ALOG_BREAK_IF(!msg->find_string("uri", uri));
+      ALOG_BREAK_IF(!msg->find_int32("width", width));
+      ALOG_BREAK_IF(!msg->find_int32("height", height));
 
+    } else {
+      ALOGD("Unsupported message what %u", msg->what());
+    }
+  } while(0);
+
+  return 0;
 }
 
 void MediaInputImplUridb::on_uridb_pad_added(GstElement *obj, GstPad *pad, void *data)
 {
-  // TODO 这里逻辑有问题，输出流不能阻塞，可能需要将pad留到no more pads添加
-  // 或者用fakesink
   ALOG_TRACE;
   ALOGD("Recevied new pad '%s' from '%s", GST_PAD_NAME(pad), GST_ELEMENT_NAME(obj));
 
@@ -233,8 +239,10 @@ void MediaInputImplUridb::on_uridb_pad_added(GstElement *obj, GstPad *pad, void 
 
     if (g_str_has_prefix(pad_type, "video/")) {
       if (!self->video_linked_) {
-        MediaInputModule::instance()->on_videoin_is_ready(self);
+        // 链接视频处理流程
         self->create_video_process(pad);
+        // 回调，创建queue连接tee，重连input-selector
+        MediaInputModule::instance()->on_videoin_is_ready(self);
         self->video_linked_ = true;
       } else {
         ALOGD("Already linked video stream");
@@ -270,8 +278,8 @@ void MediaInputImplUridb::on_uridb_element_added(GstElement *obj, GstElement *el
     if (g_strcmp0(gst_plugin_feature_get_name(factory), "mppvideodec") == 0) {
       g_object_set(elem,
               "format", 11, // RGBA:11 RGB:15 BGR:16
-              "width", 1920,
-              "height", 1080,
+              "width", self->width_,
+              "height", self->height_,
               "dma-feature", TRUE,
               // "disable-dts", TRUE, // try to disable dts, might help mpp generate pts
               // "max-lateness", 200000000, // 200ms

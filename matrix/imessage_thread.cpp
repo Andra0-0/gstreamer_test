@@ -5,6 +5,10 @@
 
 namespace mmx {
 
+/**
+ * IMessageThread constructor
+ * @param name Thread name, max length 15 characters
+ */
 IMessageThread::IMessageThread(const char *name)
 {
   do {
@@ -19,6 +23,7 @@ IMessageThread::~IMessageThread()
     IMessageThreadManager::instance()->unregister_thread(this);
     IThread::stop();
     msg_cond_.notify_all();
+    IThread::stop_wait();
   } while(0);
 }
 

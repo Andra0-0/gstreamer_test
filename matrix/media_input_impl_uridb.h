@@ -35,7 +35,7 @@ public:
 
   virtual GstPad* get_request_pad(bool is_video) override;
 
-  virtual gint set_property(const string &name, const MetaMessagePtr &msg) override;
+  virtual gint set_property(const IMessagePtr &msg) override;
 
   // uridecodebin element signals callback
   static void on_uridb_pad_added(GstElement *obj, GstPad *pad, void *data);
@@ -54,13 +54,11 @@ private:
 
   GstElement *bin_;
   GstElement *source_;
-
-  bool video_linked_;
-  gint video_pad_cnt_;
   GstElement *video_cvt_;
   GstElement *video_scale_;
   GstElement *video_caps_;
   GstElement *video_tee_;
+
   // vector<GstPad*> video_pad_;
   unordered_map<string, GstElement*> video_queue_; // string padname, GstElement *queue
 
@@ -72,7 +70,14 @@ private:
   // GstElement *fakequeue_;
 
   // manager pad
+  gint video_pad_cnt_;
   vector<GstElement*> pad_array_;
+
+  bool video_linked_; // 视频流是否已经链接
+
+  string  pending_uri_;
+  gint    pending_width_;
+  gint    pending_height_;
 };
 
 }

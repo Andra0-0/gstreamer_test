@@ -6,18 +6,21 @@
 
 namespace mmx {
 
-static inline uint64_t get_current_time_us()
-{
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  return tv.tv_sec * 1000000ULL + tv.tv_usec;
-}
-
-IMessage::IMessage()
-  : dst_tid_(0)
+IMessage::IMessage(uint32_t what)
+  : what_(what)
+  , dst_tid_(0)
   , dst_time_(0)
 {
+}
 
+IMessage::IMessage(uint32_t what, IMessageThread *const dst)
+  : what_(what)
+  , dst_tid_(0)
+  , dst_time_(0)
+{
+  if (dst) {
+    dst_tid_ = dst->tid();
+  }
 }
 
 IMessage::~IMessage()
@@ -27,17 +30,22 @@ IMessage::~IMessage()
 
 void IMessage::send(uint64_t delay_us)
 {
-  dst_tid_ = pthread_self();
-  dst_time_ = get_current_time_us() + delay_us;
-  IMessageThreadManager::instance()->send_message(shared_from_this(), delay_us);
+  if (dst_tid_ == 0) {
+    dst_tid_ = pthread_self();
+    dst_time_ = IMessageThreadManager::get_curr_clock_ns() + delay_us * 1000;
+    IMessageThreadManager::instance()->send_message(shared_from_this(), delay_us);
+  } else {
+    dst_time_ = IMessageThreadManager::get_curr_clock_ns() + delay_us * 1000;
+    IMessageThreadManager::instance()->send_message(shared_from_this(), delay_us);
+  }
 }
 
-void IMessage::send(IMessageThread *const thread, uint64_t delay_us)
-{
-  dst_tid_ = thread->tid();
-  dst_time_ = get_current_time_us() + delay_us;
-  IMessageThreadManager::instance()->send_message(shared_from_this(), delay_us);
-}
+// void IMessage::send(IMessageThread *const thread, uint64_t delay_us)
+// {
+//   dst_tid_ = thread->tid();
+//   dst_time_ = get_current_time_us() + delay_us;
+//   IMessageThreadManager::instance()->send_message(shared_from_this(), delay_us);
+// }
 
 void IMessage::set_bool(const char *name, bool value)
 {

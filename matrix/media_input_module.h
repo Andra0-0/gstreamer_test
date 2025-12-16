@@ -7,9 +7,9 @@
 #include <vector>
 #include <gst/gst.h>
 
-#include "noncopyable.h"
 #include "media_input_intf.h"
 #include "ipad_prober.h"
+#include "imessage_thread.h"
 
 namespace mmx {
 
@@ -21,30 +21,24 @@ using std::mutex;
 using std::vector;
 using std::recursive_mutex;
 using InputPadSwitchPtr = shared_ptr<InputPadSwitch>;
-using MediaInputModulePtr = shared_ptr<MediaInputModule>;
+using MediaInputModulePtr = MediaInputModule*;
 
-enum VideoInputType {
-  kVideoInputInvalid,
-  kVideoInputImage,
-  kVideoInputHdmi,
-  kVideoInputUridb,
+enum MediaInputType {
+  kMediaInputInvalid,
+  kMediaInputImage,
+  kMediaInputHdmi,
+  kMediaInputUridb,
 };
 
-/**
- * @param inpad_ MediaInputModule bin src pad
- * @param inselect_ MediaInputModule bin input-selector
- * @param indev_main_ 主输入源
- * @param indev_curr_ 当前输入源
- * @param indev_list_ 输入源链表
- */
-// struct VideoRequestPad {
-//   GstPad *inpad_;
-//   GstElement *inselect_;
-//   string indev_main_;
-//   string indev_curr_;
-//   bool indev_main_linked_;
-//   list<MediaInputIntfPtr> indev_list_;
-// };
+enum {
+  kInputStreamMaxNum = 16,
+};
+
+struct MediaInputConfig {
+  MediaInputType  type_;
+  string          uri_;
+  string          srcname_;
+};
 
 class InputPadSwitch : public NonCopyable {
 public:
@@ -91,86 +85,63 @@ private:
 /**
  * 视频输入流管理模块，负责创建销毁视频流
  */
-class MediaInputModule : public NonCopyable {
+class MediaInputModule : public IMessageThread {
 public:
-  enum {
-    kVideoInputMaxNum = 16,
-  };
-
   static inline MediaInputModulePtr instance() {
     if (!instance_) {
-      std::lock_guard<mutex> _l(lock_ins_);
-      if (instance_) return instance_;
+      std::lock_guard<mutex> _l(inslock_);
+      if (instance_) return instance_.get();
 
-      instance_ = std::make_shared<MediaInputModule>();
+      instance_ = shared_ptr<MediaInputModule>(new MediaInputModule());
     }
-    return instance_;
+    return instance_.get();
   }
-
-  MediaInputModule();
 
   virtual ~MediaInputModule();
 
-  MediaInputIntfPtr create(VideoInputType type);
+  MediaInputIntfPtr create(const MediaInputConfig &cfg);
 
   void destroy(gint id);
 
   string get_info();
 
-  GstElement *get_bin() { return videoin_bin_; }
+  GstElement *get_bin() { return bin_; }
 
   // GstPad* get_src_pad(const char *padname);
 
-  /**
-   * 外部调用，MediaInputModule会尝试创建，如果输入媒体流未准备好
-   * 会切换到备用流，直到媒体流准备好后切换回主流
-   */
   GstPad* get_request_pad(const MediaInputIntfPtr &ptr, bool is_video=true);
 
-  /**
-   * 媒体流准备完成
-   * 尝试检查所有src pad，是否需要切换备用流到主流
-   */
   void on_videoin_is_ready(MediaInputIntf *ptr);
 
-  /**
-   * MediaMatrix先检查GstMessage，错误发生在MediaInputModule内部，则从这处理
-   */
   void on_handle_bus_msg_error(GstBus *bus, GstMessage *msg);
 
 protected:
-  MediaInputIntfPtr create_videoin_err();
+  MediaInputModule();
 
-  /**
-   * 在MediaInputModule Bin上申请一个src pad
-   * 尝试连接输入源视频流，若失败则切换到备用流
-   */
+  virtual void handle_message(const IMessagePtr &msg) override;
+
+  MediaInputIntfPtr create_indev_nosignal();
+
   GstPad* create_video_src_pad(const MediaInputIntfPtr &ptr);
 
-  // 主流准备完毕，尝试重连到input-selector
-  // void connect_selector(const MediaInputIntfPtr &ptr);
-  // 主流出错切换备用流，主流恢复切回主流
-  // void switch_selector(const MediaInputIntfPtr &ptr, bool open);
-
 private:
-  static MediaInputModulePtr instance_;
-  static mutex lock_ins_;
+  static mutex                        inslock_;
+  static shared_ptr<MediaInputModule> instance_;
+
+  GstElement *bin_;
+
+  // 输入媒体流
+  gint                            indev_cnt_;
+  MediaInputIntfPtr               indev_nosignal_;
+  vector<MediaInputIntfPtr>       indev_array_;
+  unordered_map<int,const char*>  indev_type_name_;
+
+  // 输入媒体流连接管理
+  unordered_map<string,
+                InputPadSwitchPtr>  inpad_umap_;
+  gint                              inpad_cnt_;
 
   recursive_mutex lock_core_;
-  gint videoin_cnt_;
-  MediaInputIntfPtr videoin_err_;
-  vector<MediaInputIntfPtr> videoin_array_;
-
-  /**
-   * @param string pad名称：video_src_%u
-   * @param InputPadSwitch 输入源链表及输入选择
-   */
-  unordered_map<string, InputPadSwitchPtr> inpad_umap_;
-  gint inpad_cnt_;
-
-  GstElement *videoin_bin_;
-  // vector<GstElement*> videoinput_selector_;
-  /*Debug*///IPadProberPtr prober_;
 };
 
 } // namespace mmx

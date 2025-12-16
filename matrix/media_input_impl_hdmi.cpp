@@ -24,6 +24,8 @@ gint MediaInputImplHdmi::init()
   gint ret = -1;
 
   do {
+    ALOG_BREAK_IF(uri_.empty());
+
     bin_ = gst_bin_new(name_.c_str());
     ALOG_BREAK_IF(!bin_);
 
@@ -46,7 +48,7 @@ gint MediaInputImplHdmi::init()
     // ALOG_BREAK_IF(!queue_);
 
     g_object_set(G_OBJECT(source_),
-            "device", "/dev/video0",
+            "device", uri_.c_str(),
             "io-mode", 4, // 4-DMABUF
             NULL);
     // g_object_set(G_OBJECT(queue_),
@@ -57,8 +59,8 @@ gint MediaInputImplHdmi::init()
     //         NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
             "format", G_TYPE_STRING, "RGBA",
-            "width", G_TYPE_INT, 1920,
-            "height", G_TYPE_INT, 1080,
+            "width", G_TYPE_INT, width_,
+            "height", G_TYPE_INT, height_,
             "framerate", GST_TYPE_FRACTION, 30, 1,
             NULL);
     if (caps) {
@@ -157,9 +159,9 @@ GstPad* MediaInputImplHdmi::get_request_pad(bool is_video)
   return pad;
 }
 
-gint MediaInputImplHdmi::set_property(const string &name, const MetaMessagePtr &msg)
+gint MediaInputImplHdmi::set_property(const IMessagePtr &msg)
 {
-
+  return 0;
 }
 
 GstPad* MediaInputImplHdmi::create_video_src_pad()

@@ -17,6 +17,11 @@ IThread::~IThread()
 
 }
 
+/**
+ * Start the thread with given name
+ * @param name Thread name, max length 15 characters
+ * @return 0 on success, negative value on error
+ */
 int IThread::start(const char *name)
 {
   if (thread_running_) return 0;
@@ -39,11 +44,17 @@ int IThread::start(const char *name)
   return ret;
 }
 
+/**
+ * Try to stop the thread, set exit flag only
+ */
 void IThread::stop()
 {
   thread_exit_pending_ = true;
 }
 
+/**
+ * Wait for the thread to exit
+ */
 void IThread::stop_wait()
 {
   if (thread_id_ == pthread_self()) {
@@ -79,7 +90,7 @@ int IThread::create_raw_thread(thread_entry entry, void *data, const char *name)
       break;
     }
     thread_id_ = thread;
-    set_thread_name(name);
+    thread_name_ = name;
   } while(0);
 
   return ret;
@@ -90,6 +101,7 @@ int IThread::thread_entry_impl(void *data)
   IThread *const self = static_cast<IThread*>(data);
   int ret;
 
+  self->set_thread_name(self->thread_name_.c_str());
   do {
     // if (self->thread_exit_pending_) break;
 
@@ -106,9 +118,11 @@ int IThread::thread_entry_impl(void *data)
   return 0;
 }
 
+/**
+ * Linux change current thread name
+ */
 int IThread::set_thread_name(const char *name)
 {
-  thread_name_ = name;
 #if defined(__linux__)
   size_t len = strlen(name);
   const char *_name = name;

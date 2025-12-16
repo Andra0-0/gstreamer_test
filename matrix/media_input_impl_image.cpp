@@ -23,6 +23,7 @@ gint MediaInputImplImage::init()
 
   do {
     std::lock_guard<mutex> _l(lock_);
+    ALOG_BREAK_IF(uri_.empty());
 
     bin_ = gst_bin_new(name_.c_str());
     ALOG_BREAK_IF(!bin_);
@@ -52,18 +53,20 @@ gint MediaInputImplImage::init()
     ALOG_BREAK_IF(!tee_);
 
     g_object_set(G_OBJECT(source_),
-            "location", "/home/cat/test/no_signal.jpg",
+            "location", uri_.c_str(),
             NULL);
     g_object_set(G_OBJECT(decoder_),
             "format", 11, // 11-RGBA 16-BGR 23-NV12
+            "width", width_,
+            "height", height_,
             NULL);
     // g_object_set(G_OBJECT(imagefreeze_),
     //         "num-buffers", 5,
     //         NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
             "format", G_TYPE_STRING, "RGBA",
-            "width", G_TYPE_INT, 1920,
-            "height", G_TYPE_INT, 1080,
+            // "width", G_TYPE_INT, 1920,
+            // "height", G_TYPE_INT, 1080,
             "framerate", GST_TYPE_FRACTION, 3, 1, // 3fps
             NULL);
     if (caps) {
@@ -170,9 +173,17 @@ GstPad* MediaInputImplImage::get_request_pad(bool is_video)
   return pad;
 }
 
-gint MediaInputImplImage::set_property(const string &name, const MetaMessagePtr &msg)
+gint MediaInputImplImage::set_property(const IMessagePtr &msg)
 {
-  
+  do {
+    if (msg->what() == IMSG_IMAGE_SETPROPERTY) {
+      
+    } else {
+      ALOGD("Unsupported message what %u", msg->what());
+    }
+  } while(0);
+
+  return 0;
 }
 
 GstPad* MediaInputImplImage::create_video_src_pad()

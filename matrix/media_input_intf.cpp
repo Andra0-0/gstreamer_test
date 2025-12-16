@@ -3,7 +3,10 @@
 namespace mmx {
 
 MediaInputIntf::MediaInputIntf()
-  : state_(kStreamStateInvalid)
+  : id_(-1)
+  , state_(kStreamStateInvalid)
+  , width_(1920)
+  , height_(1080)
 {
 
 }

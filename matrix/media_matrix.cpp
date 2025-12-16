@@ -5,8 +5,7 @@
 #include <vector>
 
 #include "debug.h"
-// #include "input_impl_v4l2.h"
-// #include "input_impl_file.h"
+#include "media_define.h"
 #include "media_input_impl_hdmi.h"
 #include "media_input_module.h"
 #include "output_impl_kms.h"
@@ -58,10 +57,13 @@ gint MediaMatrix::init(int argc, char *argv[])
   do {
     MediaInputModulePtr input_module = MediaInputModule::instance();
 
-    MediaInputIntfPtr input1;    
-    // input1 = input_module->create(VideoInputType::kVideoInputUridb);
-    input1 = input_module->create(VideoInputType::kVideoInputHdmi);
-    ALOGD("%s", input1->name());
+    MediaInputIntfPtr input1;
+    MediaInputConfig cfg1;
+    cfg1.type_ = kMediaInputHdmi;
+    cfg1.uri_ = PATH_INPUT_HDMI_DEV;
+    cfg1.srcname_ = "test-input";
+    input1 = input_module->create(cfg1);
+
     GstPad *src_pad1 = input_module->get_request_pad(input1);
     if (!src_pad1) {
       ALOGD("Error! input module return null pad pointer");
@@ -196,7 +198,6 @@ gint MediaMatrix::deinit()
   /* 在结束前再生成一个DOT文件，显示可能的状态变化 */
   GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_),
       GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-deinit");
-  ALOGD("%s", mixer_->get_info().c_str());
 
   if (bus_ != nullptr) {
     gst_object_unref(bus_);

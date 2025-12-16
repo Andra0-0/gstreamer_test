@@ -4,19 +4,13 @@
 #include "media_input_impl_hdmi.h"
 #include "media_input_impl_uridb.h"
 #include "media_matrix.h"
+#include "media_define.h"
 #include "debug.h"
 
 namespace mmx {
 
-MediaInputModulePtr MediaInputModule::instance_ = nullptr;
-mutex MediaInputModule::lock_ins_;
-
-const char *videoin_name[] = {
-  "VideoInputInvalid",
-  "VideoInputImage",
-  "VideoInputHdmi",
-  "VideoInputUridb"
-};
+mutex MediaInputModule::inslock_;
+shared_ptr<MediaInputModule> MediaInputModule::instance_ = nullptr;
 
 InputPadSwitch::InputPadSwitch(GstElement *bin, const gchar *name)
   : is_link_mainstream_(false)
@@ -258,17 +252,24 @@ gint InputPadSwitch::sswitch(StreamType type)
 }
 
 MediaInputModule::MediaInputModule()
-  : videoin_cnt_(0)
+  : IMessageThread("MediaInModule")
+  , indev_cnt_(0)
   , inpad_cnt_(0)
 {
   ALOG_TRACE;
   do {
-    videoin_array_.resize(kVideoInputMaxNum);
+    indev_type_name_ = {
+      {kMediaInputInvalid, "MediaInputInvalid"},
+      {kMediaInputImage, "MediaInputImage"},
+      {kMediaInputHdmi, "MediaInputHdmi"},
+      {kMediaInputUridb, "MediaInputUridb"},
+    };
+    indev_array_.resize(kInputStreamMaxNum);
 
-    videoin_bin_ = gst_bin_new("MediaInputModule");
-    ALOG_BREAK_IF(!videoin_bin_);
+    bin_ = gst_bin_new("MediaInputModule");
+    ALOG_BREAK_IF(!bin_);
 
-    videoin_err_ = create_videoin_err();
+    indev_nosignal_ = create_indev_nosignal();
   } while(0);
 }
 
@@ -277,47 +278,49 @@ MediaInputModule::~MediaInputModule()
 
 }
 
-MediaInputIntfPtr MediaInputModule::create(VideoInputType type)
+MediaInputIntfPtr MediaInputModule::create(const MediaInputConfig &cfg)
 {
   ALOG_TRACE;
   MediaInputIntfPtr ret = nullptr;
 
   do {
-    ALOG_BREAK_IF(type == kVideoInputInvalid);
-    ALOG_BREAK_IF(videoin_cnt_ >= kVideoInputMaxNum);
+    ALOG_BREAK_IF(cfg.type_ == kMediaInputInvalid);
+    ALOG_BREAK_IF(indev_cnt_ >= kInputStreamMaxNum);
     lock_core_.lock();
 
     int i = 0;
-    for (; i < kVideoInputMaxNum; ++i) {
-      if (videoin_array_[i] == nullptr)
+    for (; i < kInputStreamMaxNum; ++i) {
+      if (indev_array_[i] == nullptr)
         break;
     }
-    string name = videoin_name[type] + std::to_string(i);
-    switch (type) {
-      case kVideoInputImage:
+    string name = indev_type_name_[cfg.type_] + std::to_string(i);
+    switch (cfg.type_) {
+      case kMediaInputImage:
         ret = std::make_shared<MediaInputImplImage>();
         break;
-      case kVideoInputHdmi:
+      case kMediaInputHdmi:
         ret = std::make_shared<MediaInputImplHdmi>();
         break;
-      case kVideoInputUridb:
+      case kMediaInputUridb:
         ret = std::make_shared<MediaInputImplUridb>();
         break;
       default:
-        ALOGD("Error video input type: %d", type);
+        ALOGD("Error video input type: %d", cfg.type_);
         break;
     }
     ALOG_BREAK_IF(ret == nullptr);
-    videoin_array_[i] = ret;
-    videoin_cnt_++;
+    indev_array_[i] = ret;
+    indev_cnt_++;
 
     ret->id_ = i;
     ret->name_ = name;
+    ret->uri_ = cfg.uri_;
+    ret->src_name_ = cfg.srcname_;
     ALOG_BREAK_IF(0 != ret->init());
 
     GstElement *new_bin = ret->get_bin();
     ALOG_BREAK_IF(!new_bin);
-    gst_bin_add(GST_BIN(videoin_bin_), new_bin);
+    gst_bin_add(GST_BIN(bin_), new_bin);
     // gst_element_sync_state_with_parent(new_bin);
 
     // add_videoin_new(ret);
@@ -331,12 +334,12 @@ MediaInputIntfPtr MediaInputModule::create(VideoInputType type)
 void MediaInputModule::destroy(gint id)
 {
   do {
-    ALOG_BREAK_IF(id >= kVideoInputMaxNum || id < 0);
+    ALOG_BREAK_IF(id >= kInputStreamMaxNum || id < 0);
     lock_core_.lock();
 
-    videoin_array_[id]->deinit();
-    videoin_array_[id] = nullptr;
-    videoin_cnt_--;
+    indev_array_[id]->deinit();
+    indev_array_[id] = nullptr;
+    indev_cnt_--;
 
     lock_core_.unlock();
   } while(0);
@@ -347,32 +350,42 @@ string MediaInputModule::get_info()
   return "";
 }
 
-MediaInputIntfPtr MediaInputModule::create_videoin_err()
+void MediaInputModule::handle_message(const IMessagePtr &msg)
 {
-  ALOG_TRACE;
+
+}
+
+/**
+ * MediaInputModule内部创建，无信号图片输入源，作为备用流使用
+ */
+MediaInputIntfPtr MediaInputModule::create_indev_nosignal()
+{
+  // ALOG_TRACE;
   MediaInputIntfPtr result = nullptr;
 
   do {
-    ALOG_BREAK_IF(videoin_cnt_ >= kVideoInputMaxNum);
+    ALOG_BREAK_IF(indev_cnt_ >= kInputStreamMaxNum);
 
     int i = 0;
-    for (; i < kVideoInputMaxNum; ++i) {
-      if (videoin_array_[i] == nullptr)
+    for (; i < kInputStreamMaxNum; ++i) {
+      if (indev_array_[i] == nullptr)
         break;
     }
-    string name = videoin_name[kVideoInputImage] + std::to_string(i);
+    string name = indev_type_name_[kMediaInputImage] + std::to_string(i);
     result = std::make_shared<MediaInputImplImage>();
     ALOG_BREAK_IF(result == nullptr);
-    videoin_array_[i] = result;
-    videoin_cnt_++;
+    indev_array_[i] = result;
+    indev_cnt_++;
 
     result->id_ = i;
     result->name_ = name;
+    result->uri_ = PATH_IMAGE_NOSIGNAL;
+    result->src_name_ = "InputErrorSignal";
     ALOG_BREAK_IF(0 != result->init());
 
     GstElement *new_bin = result->get_bin();
     ALOG_BREAK_IF(!new_bin);
-    gst_bin_add(GST_BIN(videoin_bin_), new_bin);
+    gst_bin_add(GST_BIN(bin_), new_bin);
 
     ALOGD("MediaInputModule create %s success", result->name_.c_str());
   } while(0);
@@ -380,6 +393,10 @@ MediaInputIntfPtr MediaInputModule::create_videoin_err()
   return result;
 }
 
+/**
+ * 外部调用，MediaInputModule会尝试创建，如果输入媒体流未准备好
+ * 会切换到备用流，直到媒体流准备好后切换回主流
+ */
 GstPad* MediaInputModule::get_request_pad(const MediaInputIntfPtr &ptr, bool is_video)
 {
   GstPad *new_pad = nullptr;
@@ -387,10 +404,6 @@ GstPad* MediaInputModule::get_request_pad(const MediaInputIntfPtr &ptr, bool is_
   do {
     if (is_video) {
       new_pad = create_video_src_pad(ptr);
-      // if (!prober_) {
-      //   prober_ = std::make_shared<IPadProber>(
-      //           new_pad, GST_PAD_PROBE_TYPE_BUFFER, &deffunc_videoframe_info);
-      // }
     } else {
       // TODO
     }
@@ -399,13 +412,17 @@ GstPad* MediaInputModule::get_request_pad(const MediaInputIntfPtr &ptr, bool is_
   return new_pad;
 }
 
+/**
+ * 媒体流准备完成
+ * 尝试检查所有src pad，是否需要切换备用流到主流
+ */
 void MediaInputModule::on_videoin_is_ready(MediaInputIntf *ptr)
 {
   ALOG_TRACE;
   MediaInputIntfPtr input;
 
   do {
-    for (auto it : videoin_array_) {
+    for (auto it : indev_array_) {
       if (!it) continue;
       if (ptr->id() == it->id()) {
         input = it;
@@ -426,6 +443,9 @@ void MediaInputModule::on_videoin_is_ready(MediaInputIntf *ptr)
   } while(0);
 }
 
+/**
+ * MediaMatrix先检查GstMessage，错误发生在MediaInputModule内部，则从这处理
+ */
 void MediaInputModule::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg)
 {
   ALOG_TRACE;
@@ -433,7 +453,7 @@ void MediaInputModule::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg)
   // GstElementFactory *factory;
 
   do {
-    for (auto input : videoin_array_) {
+    for (auto input : indev_array_) {
       if (!input) continue;
 
       GstElement *bin = input->get_bin();
@@ -459,6 +479,10 @@ void MediaInputModule::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg)
   } while(0);
 }
 
+/**
+ * 在MediaInputModule Bin上申请一个src pad
+ * 尝试连接输入源视频流，若失败则切换到备用流
+ */
 GstPad* MediaInputModule::create_video_src_pad(const MediaInputIntfPtr &ptr)
 {
   ALOG_TRACE;
@@ -470,11 +494,11 @@ GstPad* MediaInputModule::create_video_src_pad(const MediaInputIntfPtr &ptr)
 
     string new_pad_name = string("video_src_") + std::to_string(inpad_cnt_);
 
-    inpad = std::make_shared<InputPadSwitch>(videoin_bin_, new_pad_name.c_str());
+    inpad = std::make_shared<InputPadSwitch>(bin_, new_pad_name.c_str());
     ret = inpad->get_pad();
 
     inpad->connect(ptr, InputPadSwitch::kTypeStreamMain);
-    inpad->connect(videoin_err_, InputPadSwitch::kTypeStreamFallback1);
+    inpad->connect(indev_nosignal_, InputPadSwitch::kTypeStreamFallback1);
 
     inpad_umap_.emplace(new_pad_name, std::move(inpad));
     inpad_cnt_++;
