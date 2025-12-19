@@ -33,6 +33,8 @@ public:
 
   virtual void stop_wait();
 
+  virtual void join();
+
   virtual pthread_t tid() { return thread_id_; }
 
   virtual const char *name() { return thread_name_.c_str(); }

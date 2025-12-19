@@ -8,7 +8,6 @@
 namespace mmx {
 
 MediaInputImplHdmi::MediaInputImplHdmi()
-  : video_pad_cnt_(0)
 {
   ALOG_TRACE;
 }
@@ -47,6 +46,8 @@ gint MediaInputImplHdmi::init()
     // queue_ = gst_element_factory_make("queue", "InputV4L2Queue");
     // ALOG_BREAK_IF(!queue_);
 
+    pad_manager_ = std::make_shared<IGhostPadManager>(bin_, "video_src");
+
     g_object_set(G_OBJECT(source_),
             "device", uri_.c_str(),
             "io-mode", 4, // 4-DMABUF
@@ -59,8 +60,8 @@ gint MediaInputImplHdmi::init()
     //         NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
             "format", G_TYPE_STRING, "RGBA",
-            "width", G_TYPE_INT, width_,
-            "height", G_TYPE_INT, height_,
+            "width", G_TYPE_INT, 1920, //width_,
+            "height", G_TYPE_INT, 1080,// height_,
             "framerate", GST_TYPE_FRACTION, 30, 1,
             NULL);
     if (caps) {
@@ -80,7 +81,8 @@ gint MediaInputImplHdmi::init()
     ret = 0;
   } while(0);
 
-  MediaInputModule::instance()->on_videoin_is_ready(this);
+  MediaInputModule::instance()->on_indev_video_pad_added(this);
+  // MediaInputModule::instance()->on_indev_no_more_pads(this);
 
   return ret;
 }
@@ -167,17 +169,21 @@ gint MediaInputImplHdmi::set_property(const IMessagePtr &msg)
 GstPad* MediaInputImplHdmi::create_video_src_pad()
 {
   GstElement *new_queue;
-  string new_pad_name;
   GstPad *new_pad = nullptr;
 
   do {
     ALOG_BREAK_IF(state_ == kStreamStateInvalid);
 
-    new_pad_name = string("video_src_") + std::to_string(video_pad_cnt_);
-
-    new_queue = gst_element_factory_make("queue", new_pad_name.c_str());
+    new_queue = gst_element_factory_make("queue", nullptr);
     ALOG_BREAK_IF(!new_queue);
     gst_bin_add(GST_BIN(bin_), new_queue);
+
+    g_object_set(G_OBJECT(new_queue),
+            "max-size-buffers", 3,
+            "max-size-bytes", 0,
+            "max-size-time", 0,
+            "leaky", 2, // 0-no 1-upstream 2-downstream
+            NULL);
 
     GstPad *tee_src_pad = gst_element_get_request_pad(tee_, "src_%u");
     GstPad *queue_sink_pad = gst_element_get_static_pad(new_queue, "sink");
@@ -189,16 +195,14 @@ GstPad* MediaInputImplHdmi::create_video_src_pad()
 
     GstPad *queue_src_pad = gst_element_get_static_pad(new_queue, "src");
     if (queue_src_pad) {
-      new_pad = gst_ghost_pad_new(new_pad_name.c_str(), queue_src_pad);
-      gst_element_add_pad(bin_, new_pad);
+      new_pad = pad_manager_->add_pad(queue_src_pad);
       gst_object_unref(queue_src_pad);
     } else {
       ALOGD("Failed to get src pad");
     }
 
-    video_pad_cnt_++;
     gst_element_sync_state_with_parent(new_queue);
-    ALOGD("Create video src pad success: %s", new_pad_name.c_str());
+    ALOGD("Create video src pad success: %s", GST_PAD_NAME(new_pad));
   } while(0);
 
   return new_pad;

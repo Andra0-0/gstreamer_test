@@ -14,6 +14,9 @@ mutex IMessageThreadManager::inslock_;
 shared_ptr<IMessageThreadManager> IMessageThreadManager::instance_ = nullptr;
 
 IMessageThreadManager::IMessageThreadManager()
+  : msg_timer_fd_(0)
+  , msg_wakeup_fd_(0)
+  , msg_epoll_fd_(0)
 {
 }
 
@@ -27,6 +30,7 @@ void IMessageThreadManager::stop()
   IThread::stop();
 
   struct itimerspec value;
+  memset(&value, 0, sizeof(value));
   value.it_value.tv_sec = 0;
   value.it_value.tv_nsec = 1; // 1 ns
   timerfd_settime(msg_timer_fd_, 0, &value, NULL);
@@ -34,7 +38,10 @@ void IMessageThreadManager::stop()
   msg_cond_.notify_all();
   msg_delayed_cond_.notify_all();
 
-  IThread::stop_wait();
+  if (msg_distribute_thread_.joinable()) {
+    msg_distribute_thread_.join();
+  }
+  IThread::join();
 }
 
 int IMessageThreadManager::register_thread(IMessageThread *const thread)
@@ -120,8 +127,8 @@ int IMessageThreadManager::thread_loop()
     update_delayed_timer();
 
     nfds = epoll_wait(msg_epoll_fd_, events, 1, -1);
-    ALOG_BREAK_IF(is_exit_pending());
 
+    if (is_exit_pending()) break;
     if (nfds < 0) {
       if (errno == EINTR) { // interrupted by signal, continue
         continue;
@@ -177,6 +184,7 @@ int IMessageThreadManager::thread_init()
 
     msg_distribute_thread_ =
             thread(&IMessageThreadManager::distribute_messages, this);
+    ALOGD("IMessageThreadManager thread init success");
     ret = 0;
   } while(0);
 
@@ -189,7 +197,6 @@ void IMessageThreadManager::thread_deinit()
     epoll_ctl(msg_epoll_fd_, EPOLL_CTL_DEL, msg_timer_fd_, NULL);
     close(msg_timer_fd_);
     close(msg_epoll_fd_);
-    msg_distribute_thread_.join();
   } while(0);
 }
 

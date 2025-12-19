@@ -21,10 +21,20 @@ IMessageThread::~IMessageThread()
 {
   do {
     IMessageThreadManager::instance()->unregister_thread(this);
-    IThread::stop();
-    msg_cond_.notify_all();
-    IThread::stop_wait();
   } while(0);
+}
+
+void IMessageThread::stop()
+{
+  IThread::stop();
+  msg_cond_.notify_all();
+}
+
+void IMessageThread::stop_wait()
+{
+  IThread::stop();
+  msg_cond_.notify_all();
+  IThread::join();
 }
 
 int IMessageThread::thread_loop()

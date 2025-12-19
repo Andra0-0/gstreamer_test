@@ -92,6 +92,7 @@ private:
   condition_variable            msg_cond_;
   mutex                         msg_lock_;
   int                           msg_timer_fd_;
+  int                           msg_wakeup_fd_;
   int                           msg_epoll_fd_;
   epoll_event                   msg_epoll_events_;
 

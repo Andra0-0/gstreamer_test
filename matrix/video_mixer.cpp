@@ -348,15 +348,23 @@ VideomixStyle VideoMixer::get_style_from_layout(VideomixLayout layout, gint inde
         style.width = screen_width_ * 2 / 3;
         style.height = screen_height_;
       } else if (index == 1) { // 右上画面，占据右 1/3 宽，1/2 高
+        // style.xpos = screen_width_ * 2 / 3;
+        // style.ypos = 90;
+        // style.width = screen_width_ / 3;
+        // style.height = screen_height_ / 2;
         style.xpos = screen_width_ * 2 / 3;
-        style.ypos = 90;
+        style.ypos = 180;
         style.width = screen_width_ / 3;
-        style.height = screen_height_ / 2;
+        style.height = screen_height_ / 3;
       } else { // 右下画面，占据右 1/3 宽，1/2 高
+        // style.xpos = screen_width_ * 2 / 3;
+        // style.ypos = 90 + 360;
+        // style.width = screen_width_ / 3;
+        // style.height = screen_height_ / 2;
         style.xpos = screen_width_ * 2 / 3;
-        style.ypos = 90 + 360;
+        style.ypos = 180 + 360;
         style.width = screen_width_ / 3;
-        style.height = screen_height_ / 2;
+        style.height = screen_height_ / 3;
       }
       break;
     default:

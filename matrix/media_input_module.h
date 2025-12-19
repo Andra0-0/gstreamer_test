@@ -10,6 +10,7 @@
 #include "media_input_intf.h"
 #include "ipad_prober.h"
 #include "imessage_thread.h"
+#include "ighost_pad_manager.h"
 
 namespace mmx {
 
@@ -38,6 +39,10 @@ struct MediaInputConfig {
   MediaInputType  type_;
   string          uri_;
   string          srcname_;
+  gint            width_;
+  gint            height_;
+
+  MediaInputConfig() : type_(kMediaInputInvalid), width_(1920), height_(1080) {}
 };
 
 class InputPadSwitch : public NonCopyable {
@@ -53,7 +58,7 @@ public:
     MediaInputIntfPtr indev_src_;
   };
 
-  InputPadSwitch(GstElement *bin, const gchar *name);
+  InputPadSwitch(GstElement *bin, const IGhostPadManagerPtr &mana);
   ~InputPadSwitch();
 
   GstPad* get_pad() { return pad_; }
@@ -66,6 +71,9 @@ public:
 
   bool linked_mainstream() { return is_link_mainstream_; }
   bool current_mainstream() { return is_curr_mainstream_; }
+
+  string curr_stream_name() { return stream_curr_; }
+  string main_stream_name() { return stream_main_; }
 
 private:
   bool is_link_mainstream_; // Main stream might not ready
@@ -111,8 +119,8 @@ public:
 
   GstPad* get_request_pad(const MediaInputIntfPtr &ptr, bool is_video=true);
 
-  void on_videoin_is_ready(MediaInputIntf *ptr);
-
+  void on_indev_video_pad_added(MediaInputIntf *ptr);
+  void on_indev_no_more_pads(MediaInputIntf *ptr);
   void on_handle_bus_msg_error(GstBus *bus, GstMessage *msg);
 
 protected:
@@ -138,8 +146,8 @@ private:
 
   // 输入媒体流连接管理
   unordered_map<string,
-                InputPadSwitchPtr>  inpad_umap_;
-  gint                              inpad_cnt_;
+                InputPadSwitchPtr>  inpad_video_switch_;
+  IGhostPadManagerPtr               inpad_video_padmanage_;
 
   recursive_mutex lock_core_;
 };

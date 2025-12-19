@@ -7,7 +7,6 @@
 namespace mmx {
 
 MediaInputImplImage::MediaInputImplImage()
-  : video_pad_cnt_(0)
 {
 
 }
@@ -51,6 +50,8 @@ gint MediaInputImplImage::init()
 
     tee_ = gst_element_factory_make("tee", "InputImageTee");
     ALOG_BREAK_IF(!tee_);
+
+    pad_manager_ = std::make_shared<IGhostPadManager>(bin_, "video_src");
 
     g_object_set(G_OBJECT(source_),
             "location", uri_.c_str(),
@@ -189,15 +190,12 @@ gint MediaInputImplImage::set_property(const IMessagePtr &msg)
 GstPad* MediaInputImplImage::create_video_src_pad()
 {
   GstElement *new_queue;
-  string new_pad_name;
   GstPad *new_pad = nullptr;
 
   do {
     ALOG_BREAK_IF(state_ == kStreamStateInvalid);
 
-    new_pad_name = string("video_src_") + std::to_string(video_pad_cnt_);
-
-    new_queue = gst_element_factory_make("queue", new_pad_name.c_str());
+    new_queue = gst_element_factory_make("queue", nullptr);
     ALOG_BREAK_IF(!new_queue);
     gst_bin_add(GST_BIN(bin_), new_queue);
 
@@ -218,8 +216,7 @@ GstPad* MediaInputImplImage::create_video_src_pad()
 
     GstPad *queue_src_pad = gst_element_get_static_pad(new_queue, "src");
     if (queue_src_pad) {
-      new_pad = gst_ghost_pad_new(new_pad_name.c_str(), queue_src_pad);
-      gst_element_add_pad(bin_, new_pad);
+      new_pad = pad_manager_->add_pad(queue_src_pad);
       gst_object_unref(queue_src_pad);
     } else {
       ALOGD("Failed to get src pad");
@@ -229,7 +226,6 @@ GstPad* MediaInputImplImage::create_video_src_pad()
     //           new_pad, GST_PAD_PROBE_TYPE_BUFFER, mmx::deffunc_videoframe_info);
     // }
 
-    video_pad_cnt_++;
     gst_element_sync_state_with_parent(new_queue);
   } while(0);
 

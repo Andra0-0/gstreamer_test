@@ -36,11 +36,12 @@ struct VideomixStyle {
 };
 
 struct VideomixConfig {
-  gint index_;
-  GstPad *src_pad_;
-  GstPad *sink_pad_;
-  VideomixStyle style_;
-  VideomixLayout layout_;
+  gint            index_;
+  GstPad*         src_pad_;
+  GstPad*         sink_pad_;
+  VideomixStyle   style_;
+  VideomixLayout  layout_;
+  string          stream_name_;
 };
 
 class VideoMixer {

@@ -23,6 +23,10 @@ public:
 
   virtual ~IMessageThread();
 
+  virtual void stop() override;
+
+  virtual void stop_wait() override;
+
   friend class IMessageThreadManager;
 protected:
   virtual int thread_loop() override;

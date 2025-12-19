@@ -72,6 +72,21 @@ void IThread::stop_wait()
   } while(0);
 }
 
+void IThread::join()
+{
+  if (thread_id_ == pthread_self()) {
+    fprintf(stderr, "IThread (%s-%p): don't call this function to join self\n",
+            thread_name_.c_str(), this);
+    return;
+  }
+  do {
+    std::unique_lock<mutex> _l(thread_lock_);
+    while (thread_running_) {
+      thread_cond_.wait(_l);
+    }
+  } while(0);
+}
+
 int IThread::create_raw_thread(thread_entry entry, void *data, const char *name)
 {
   pthread_attr_t attr;

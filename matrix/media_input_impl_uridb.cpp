@@ -15,12 +15,9 @@ MediaInputImplUridb::MediaInputImplUridb()
   , video_caps_(nullptr)
   , video_tee_(nullptr)
   , audio_tee_(nullptr)
-  , video_pad_cnt_(0)
   , video_linked_(false)
-  , pending_width_(1920)
-  , pending_height_(1080)
 {
-  // ALOG_TRACE;
+
 }
 
 MediaInputImplUridb::~MediaInputImplUridb()
@@ -60,6 +57,8 @@ gint MediaInputImplUridb::init()
     // fakequeue_ = gst_element_factory_make("queue", "UriFakeQueue");
     // ALOG_BREAK_IF(!fakequeue_);
 
+    pad_manager_ = std::make_shared<IGhostPadManager>(bin_, "video_src");
+
     g_object_set(G_OBJECT(source_),
             "uri", uri_.c_str(),
             // "uri", "v4l2:///dev/video0",
@@ -91,7 +90,7 @@ gint MediaInputImplUridb::init()
             /*fakequeue_, fakesink_,*/ NULL);
 
     g_signal_connect(source_, "pad-added", G_CALLBACK(on_uridb_pad_added), this);
-    // g_signal_connect(source_, "no-more-pads", G_CALLBACK(on_uridb_no_more_pads), this);
+    g_signal_connect(source_, "no-more-pads", G_CALLBACK(on_uridb_no_more_pads), this);
     g_signal_connect(source_, "element-added", G_CALLBACK(on_uridb_element_added), this);
     g_signal_connect(source_, "unknown-type", G_CALLBACK(on_uridb_unknown_type), this);
 
@@ -242,7 +241,7 @@ void MediaInputImplUridb::on_uridb_pad_added(GstElement *obj, GstPad *pad, void 
         // 链接视频处理流程
         self->create_video_process(pad);
         // 回调，创建queue连接tee，重连input-selector
-        MediaInputModule::instance()->on_videoin_is_ready(self);
+        MediaInputModule::instance()->on_indev_video_pad_added(self);
         self->video_linked_ = true;
       } else {
         ALOGD("Already linked video stream");
@@ -264,7 +263,7 @@ void MediaInputImplUridb::on_uridb_no_more_pads(GstElement *obj, void *data)
     // self->state_ = kStreamStateReady;
     // self->lock_.unlock();
 
-    // MediaInputModule::instance()->on_videoin_is_ready(self);
+    MediaInputModule::instance()->on_indev_no_more_pads(self);
   } while(0);
 }
 
@@ -285,7 +284,14 @@ void MediaInputImplUridb::on_uridb_element_added(GstElement *obj, GstElement *el
               // "max-lateness", 200000000, // 200ms
               NULL);
     } else if (g_strcmp0(gst_plugin_feature_get_name(factory), "rtspsrc") == 0) {
-      g_object_set(elem, "latency", 200, NULL);
+      g_object_set(elem,
+              "latency", 200, // 200ms 延迟缓冲
+              // "protocols", 4, // 4-tcp 7-tcp/udp/udp-mcast
+              // "retry", 3, // 重试次数
+              // "timeout", 10, // 超时时间 10 秒
+              // "tcp-timeout", 20000000, // TCP 超时 20 秒 (微秒)
+              // "drop-on-latency", TRUE, // 延迟时丢帧
+              NULL);
     }
   }
   if (GST_IS_BIN(elem)) {
@@ -305,15 +311,12 @@ GstPad* MediaInputImplUridb::create_video_src_pad()
 {
   ALOG_TRACE;
   GstElement *new_queue;
-  string new_pad_name;
   GstPad *new_pad;
 
   do {
     ALOG_BREAK_IF(state_ == kStreamStateInvalid);
 
-    new_pad_name = string("video_src_") + std::to_string(video_pad_cnt_);
-
-    new_queue = gst_element_factory_make("queue", new_pad_name.c_str());
+    new_queue = gst_element_factory_make("queue", nullptr);
     ALOG_BREAK_IF(!new_queue);
     gst_bin_add(GST_BIN(bin_), new_queue);
 
@@ -327,8 +330,7 @@ GstPad* MediaInputImplUridb::create_video_src_pad()
 
     GstPad *queue_src_pad = gst_element_get_static_pad(new_queue, "src");
     if (queue_src_pad) {
-      new_pad = gst_ghost_pad_new(new_pad_name.c_str(), queue_src_pad);
-      gst_element_add_pad(bin_, new_pad);
+      new_pad = pad_manager_->add_pad(queue_src_pad);
       gst_object_unref(queue_src_pad);
     } else {
       ALOGD("Failed to get src pad");
@@ -340,8 +342,7 @@ GstPad* MediaInputImplUridb::create_video_src_pad()
     // }
 
     gst_element_sync_state_with_parent(new_queue);
-    video_queue_.emplace(new_pad_name, new_queue);
-    video_pad_cnt_++;
+    video_queue_.emplace(GST_PAD_NAME(new_pad), new_queue);
   } while(0);
 
   return new_pad;

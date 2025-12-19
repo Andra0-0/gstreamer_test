@@ -6,6 +6,7 @@
 
 #include "media_input_intf.h"
 #include "ipad_prober.h"
+#include "ighost_pad_manager.h"
 
 namespace mmx {
 
@@ -49,9 +50,10 @@ private:
   GstElement *tee_;
 
   mutex lock_;
-  gint video_pad_cnt_;
+  // gint video_pad_cnt_;
   // unordered_map<const char*, GstElement*> umap_queue_;
   IPadProberPtr prober_;
+  IGhostPadManagerPtr pad_manager_;
 };
 
 }

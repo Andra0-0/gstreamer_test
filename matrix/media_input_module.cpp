@@ -1,5 +1,7 @@
 #include "media_input_module.h"
 
+#include <sstream>
+
 #include "media_input_impl_image.h"
 #include "media_input_impl_hdmi.h"
 #include "media_input_impl_uridb.h"
@@ -12,7 +14,7 @@ namespace mmx {
 mutex MediaInputModule::inslock_;
 shared_ptr<MediaInputModule> MediaInputModule::instance_ = nullptr;
 
-InputPadSwitch::InputPadSwitch(GstElement *bin, const gchar *name)
+InputPadSwitch::InputPadSwitch(GstElement *bin, const IGhostPadManagerPtr &mana)
   : is_link_mainstream_(false)
   , is_curr_mainstream_(false)
   , pad_(nullptr)
@@ -40,8 +42,7 @@ InputPadSwitch::InputPadSwitch(GstElement *bin, const gchar *name)
 
     GstPad *queue_src_pad = gst_element_get_static_pad(queue_, "src");
     if (queue_src_pad) {
-      pad_ = gst_ghost_pad_new(name, queue_src_pad);
-      gst_element_add_pad(bin, pad_);
+      pad_ = mana->add_pad(queue_src_pad);
       gst_object_unref(queue_src_pad);
     } else {
       ALOGD("Fatel error, get input-selector src pad failed");
@@ -254,7 +255,6 @@ gint InputPadSwitch::sswitch(StreamType type)
 MediaInputModule::MediaInputModule()
   : IMessageThread("MediaInModule")
   , indev_cnt_(0)
-  , inpad_cnt_(0)
 {
   ALOG_TRACE;
   do {
@@ -268,6 +268,8 @@ MediaInputModule::MediaInputModule()
 
     bin_ = gst_bin_new("MediaInputModule");
     ALOG_BREAK_IF(!bin_);
+
+    inpad_video_padmanage_ = std::make_shared<IGhostPadManager>(bin_, "video_src");
 
     indev_nosignal_ = create_indev_nosignal();
   } while(0);
@@ -316,6 +318,8 @@ MediaInputIntfPtr MediaInputModule::create(const MediaInputConfig &cfg)
     ret->name_ = name;
     ret->uri_ = cfg.uri_;
     ret->src_name_ = cfg.srcname_;
+    ret->width_ = cfg.width_;
+    ret->height_ = cfg.height_;
     ALOG_BREAK_IF(0 != ret->init());
 
     GstElement *new_bin = ret->get_bin();
@@ -347,12 +351,29 @@ void MediaInputModule::destroy(gint id)
 
 string MediaInputModule::get_info()
 {
-  return "";
+  std::ostringstream oss;
+
+  for (auto it : indev_array_) {
+    if (it == nullptr) continue;
+
+    oss << it->get_info();
+  }
+
+  return oss.str();
 }
 
 void MediaInputModule::handle_message(const IMessagePtr &msg)
 {
-
+  do {
+    if (msg->what() == IMSG_INPUT_STREAM_IS_READY) {
+      int id;
+      ALOG_BREAK_IF(!msg->find_int32("id", id));
+      // gst_element_sync_state_with_parent(indev_array_[id]->get_bin());
+      IMessagePtr imsg = std::make_shared<IMessage>(
+              IMSG_PIPE_READY_TO_PAUSED_PREROLL, MediaMatrix::instance().get());
+      imsg->send();
+    }
+  } while(0);
 }
 
 /**
@@ -413,33 +434,38 @@ GstPad* MediaInputModule::get_request_pad(const MediaInputIntfPtr &ptr, bool is_
 }
 
 /**
- * 媒体流准备完成
- * 尝试检查所有src pad，是否需要切换备用流到主流
+ * 视频流准备完成
+ * 检查所有input-selector，是否需要切换备用流到主流
  */
-void MediaInputModule::on_videoin_is_ready(MediaInputIntf *ptr)
+void MediaInputModule::on_indev_video_pad_added(MediaInputIntf *ptr)
 {
   ALOG_TRACE;
   MediaInputIntfPtr input;
 
   do {
-    for (auto it : indev_array_) {
-      if (!it) continue;
-      if (ptr->id() == it->id()) {
-        input = it;
-        break;
-      }
-    }
+    ALOG_BREAK_IF(!ptr);
+    input = indev_array_[ptr->id()];
 
-    // MediaInputModule获取pad不会失败，而是切换到备用流
-    // 如果MediaInputIntf未准备好，在这里重连
-    // connect_selector(input);
-    for (auto it : inpad_umap_) {
+    for (auto it : inpad_video_switch_) {
       it.second->reconnect(input);
     }
-    // input->start();
+    IMessagePtr imsg = std::make_shared<IMessage>(IMSG_INPUT_STREAM_IS_READY, this);
+    imsg->set_int32("id", ptr->id());
+    imsg->send();
+  } while(0);
+}
 
-    // create_video_src_pad(input);
-    // TODO create_audio_src_pad
+void MediaInputModule::on_indev_no_more_pads(MediaInputIntf *ptr)
+{
+  ALOG_TRACE;
+  MediaInputIntfPtr input;
+
+  do {
+    ALOG_BREAK_IF(!ptr);
+    // input = indev_array_[ptr->id()];
+
+    // gst_element_sync_state_with_parent(input->get_bin());
+    // /*Debug*/ALOGD("\e[1;31m%s no more pads\e[0m", input->name());
   } while(0);
 }
 
@@ -471,7 +497,7 @@ void MediaInputModule::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg)
 
         // FIXME 备用流失败是否要考虑？
         // switch_selector(input, false);
-        for (auto it : inpad_umap_) {
+        for (auto it : inpad_video_switch_) {
           it.second->sswitch(InputPadSwitch::kTypeStreamFallback1);
         }
       }
@@ -486,26 +512,30 @@ void MediaInputModule::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg)
 GstPad* MediaInputModule::create_video_src_pad(const MediaInputIntfPtr &ptr)
 {
   ALOG_TRACE;
-  InputPadSwitchPtr inpad;
-  GstPad *ret = nullptr;
+  InputPadSwitchPtr inpad_switch;
+  GstPad *pad = nullptr;
 
   do {
     lock_core_.lock();
+    for (auto it : inpad_video_switch_) {
+      if (it.second->main_stream_name() == ptr->name()) {
+        pad = it.second->get_pad();
+        lock_core_.unlock();
+        return pad;
+      }
+    }
 
-    string new_pad_name = string("video_src_") + std::to_string(inpad_cnt_);
+    inpad_switch = std::make_shared<InputPadSwitch>(bin_, inpad_video_padmanage_);
+    pad = inpad_switch->get_pad();
 
-    inpad = std::make_shared<InputPadSwitch>(bin_, new_pad_name.c_str());
-    ret = inpad->get_pad();
+    inpad_switch->connect(ptr, InputPadSwitch::kTypeStreamMain);
+    inpad_switch->connect(indev_nosignal_, InputPadSwitch::kTypeStreamFallback1);
 
-    inpad->connect(ptr, InputPadSwitch::kTypeStreamMain);
-    inpad->connect(indev_nosignal_, InputPadSwitch::kTypeStreamFallback1);
-
-    inpad_umap_.emplace(new_pad_name, std::move(inpad));
-    inpad_cnt_++;
+    inpad_video_switch_.emplace(GST_PAD_NAME(pad), std::move(inpad_switch));
     lock_core_.unlock();
   } while(0);
 
-  return ret;
+  return pad;
 }
 
 } // namespace mmx

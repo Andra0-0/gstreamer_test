@@ -3,6 +3,8 @@
 
 namespace mmx {
 
+#define MEDIA_MATRIX_DOT_DIR "./dot"
+
 #define PATH_IMAGE_NOSIGNAL "/home/cat/test/no_signal.jpg"
 
 #define PATH_INPUT_HDMI_DEV "/dev/video0"

@@ -7,6 +7,7 @@
 
 #include "media_input_intf.h"
 #include "ipad_prober.h"
+#include "ighost_pad_manager.h"
 
 namespace mmx {
 
@@ -70,14 +71,11 @@ private:
   // GstElement *fakequeue_;
 
   // manager pad
-  gint video_pad_cnt_;
-  vector<GstElement*> pad_array_;
+  // gint video_pad_cnt_;
+  // vector<GstElement*> pad_array_;
+  IGhostPadManagerPtr pad_manager_;
 
   bool video_linked_; // 视频流是否已经链接
-
-  string  pending_uri_;
-  gint    pending_width_;
-  gint    pending_height_;
 };
 
 }

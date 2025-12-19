@@ -88,6 +88,7 @@ OutputImplKms::OutputImplKms(hdmi_tx_port port)
             // "fd", p_drm_->fd,
             // "connector-id", p_drm_->res->connectors[port],
             // "plane-id", p_drm_->plane_res->planes[port+2],
+            // "async", FALSE,
             "sync", FALSE,
             "skip-vsync", TRUE,
             NULL);

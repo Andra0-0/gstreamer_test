@@ -3,6 +3,7 @@ set(
   media_matrix.h
   noncopyable.h
   ipad_prober.h
+  ighost_pad_manager.h
   ithread.h
   imessage_type.h
   imessage.h
@@ -23,6 +24,7 @@ set(
   main.cpp
   media_matrix.cpp
   ipad_prober.cpp
+  ighost_pad_manager.cpp
   ithread.cpp
   imessage.cpp
   imessage_thread.cpp
