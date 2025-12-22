@@ -2,7 +2,6 @@
 
 #include <sstream>
 
-#include "media_input_module.h"
 #include "debug.h"
 
 namespace mmx {
@@ -115,28 +114,37 @@ gint MediaInputImplUridb::deinit()
 
 gint MediaInputImplUridb::start()
 {
-  gint ret;
-  do {
-    state_ = kStreamStatePlaying;
+  GstStateChangeReturn ret;
 
+  do {
     ret = gst_element_set_state(GST_ELEMENT(bin_), GST_STATE_PLAYING);
     ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
 
-    ret = gst_element_set_state(GST_ELEMENT(source_), GST_STATE_PLAYING);
+    ret = gst_element_set_state(GST_ELEMENT(source_), GST_STATE_READY);
     ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
+
+    ret = gst_element_set_state(GST_ELEMENT(source_), GST_STATE_PLAYING);
+    if (ret != GST_STATE_CHANGE_SUCCESS) {
+      ALOGD("MediaInputImplUridb state change not success, ret:%d", ret);
+    }
+
+    state_ = kStreamStatePlaying;
   } while(0);
 
-  return ret;
+  return 0;
 }
 
 gint MediaInputImplUridb::pause()
 {
-  gint ret;
+  GstStateChangeReturn ret;
+
   do {
-    state_ = kStreamStatePause;
+    ALOG_BREAK_IF(state_ != kStreamStatePlaying);
 
     ret = gst_element_set_state(GST_ELEMENT(bin_), GST_STATE_PAUSED);
     ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
+
+    state_ = kStreamStatePause;
   } while(0);
 
   return ret;
@@ -216,13 +224,21 @@ gint MediaInputImplUridb::set_property(const IMessagePtr &msg)
   return 0;
 }
 
+void MediaInputImplUridb::handle_bus_msg_error(GstBus *bus, GstMessage *msg)
+{
+  ALOG_TRACE;
+  do {
+    state_ = kStreamStateInvalid;
+    gst_element_set_state(GST_ELEMENT(bin_), GST_STATE_PAUSED);
+  } while(0);
+}
+
 void MediaInputImplUridb::on_uridb_pad_added(GstElement *obj, GstPad *pad, void *data)
 {
   ALOG_TRACE;
   ALOGD("Recevied new pad '%s' from '%s", GST_PAD_NAME(pad), GST_ELEMENT_NAME(obj));
 
   MediaInputImplUridb *const self = static_cast<MediaInputImplUridb*>(data);
-  GstPad *sink_pad;
   GstCaps *pad_caps;
   GstStructure *pad_struct;
   const gchar *pad_type;
@@ -241,7 +257,8 @@ void MediaInputImplUridb::on_uridb_pad_added(GstElement *obj, GstPad *pad, void 
         // 链接视频处理流程
         self->create_video_process(pad);
         // 回调，创建queue连接tee，重连input-selector
-        MediaInputModule::instance()->on_indev_video_pad_added(self);
+        // MediaInputModule::instance()->on_indev_video_pad_added(self);
+        self->signal_indev_video_pad_added(self);
         self->video_linked_ = true;
       } else {
         ALOGD("Already linked video stream");
@@ -263,7 +280,8 @@ void MediaInputImplUridb::on_uridb_no_more_pads(GstElement *obj, void *data)
     // self->state_ = kStreamStateReady;
     // self->lock_.unlock();
 
-    MediaInputModule::instance()->on_indev_no_more_pads(self);
+    // MediaInputModule::instance()->on_indev_no_more_pads(self);
+    self->signal_indev_no_more_pads(self);
   } while(0);
 }
 
@@ -304,6 +322,12 @@ void MediaInputImplUridb::on_uridb_unknown_type(GstElement *obj, GstPad *pad, Gs
   ALOG_TRACE;
 }
 
+void MediaInputImplUridb::on_uridb_end_of_stream(GstPad *pad, gpointer data)
+{
+  MediaInputImplUridb *const self = static_cast<MediaInputImplUridb*>(data);
+  self->signal_indev_end_of_stream(self);
+}
+
 /**
  * 创建新的src_pad和video queue到bin
  */
@@ -330,6 +354,9 @@ GstPad* MediaInputImplUridb::create_video_src_pad()
 
     GstPad *queue_src_pad = gst_element_get_static_pad(new_queue, "src");
     if (queue_src_pad) {
+      // 捕获queue src pad eos信号
+      g_signal_connect(queue_src_pad, "eos", G_CALLBACK(on_uridb_end_of_stream), this);
+      // 创建ghost pad
       new_pad = pad_manager_->add_pad(queue_src_pad);
       gst_object_unref(queue_src_pad);
     } else {

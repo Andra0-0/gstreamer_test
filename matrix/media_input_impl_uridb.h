@@ -38,11 +38,15 @@ public:
 
   virtual gint set_property(const IMessagePtr &msg) override;
 
+  virtual void handle_bus_msg_error(GstBus *bus, GstMessage *msg) override;
+
   // uridecodebin element signals callback
   static void on_uridb_pad_added(GstElement *obj, GstPad *pad, void *data);
   static void on_uridb_no_more_pads(GstElement *obj, void *data);
   static void on_uridb_element_added(GstElement *obj, GstElement *elem, void *data);
   static void on_uridb_unknown_type(GstElement *obj, GstPad *pad, GstCaps caps, void *data);
+  // capture uridecodebin eos signal
+  static void on_uridb_end_of_stream(GstPad *pad, gpointer data);
 
 protected:
   GstPad* create_video_src_pad();

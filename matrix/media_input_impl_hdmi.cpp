@@ -2,7 +2,6 @@
 
 #include <sstream>
 
-#include "media_input_module.h"
 #include "debug.h"
 
 namespace mmx {
@@ -81,7 +80,8 @@ gint MediaInputImplHdmi::init()
     ret = 0;
   } while(0);
 
-  MediaInputModule::instance()->on_indev_video_pad_added(this);
+  // MediaInputModule::instance()->on_indev_video_pad_added(this);
+  signal_indev_video_pad_added(this);
   // MediaInputModule::instance()->on_indev_no_more_pads(this);
 
   return ret;
@@ -91,6 +91,10 @@ gint MediaInputImplHdmi::deinit()
 {
   do {
     state_ = kStreamStateInvalid;
+
+    if (source_) {
+      gst_element_set_state(source_, GST_STATE_NULL);
+    }
   } while(0);
 
   return 0;
@@ -98,20 +102,34 @@ gint MediaInputImplHdmi::deinit()
 
 gint MediaInputImplHdmi::start()
 {
+  GstStateChangeReturn ret;
+
   do {
     state_ = kStreamStatePlaying;
+
+    ret = gst_element_set_state(GST_ELEMENT(bin_), GST_STATE_PLAYING);
+    ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
+
+    ret = gst_element_set_state(GST_ELEMENT(source_), GST_STATE_PLAYING);
+    ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
   } while(0);
 
-  return 0;
+  return ret;
 }
 
 gint MediaInputImplHdmi::pause()
 {
+  GstStateChangeReturn ret;
+
   do {
+    ALOG_BREAK_IF(state_ != kStreamStatePlaying);
     state_ = kStreamStatePause;
+
+    ret = gst_element_set_state(GST_ELEMENT(bin_), GST_STATE_PAUSED);
+    ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
   } while(0);
 
-  return 0;
+  return ret;
 }
 
 string MediaInputImplHdmi::get_info()
@@ -164,6 +182,15 @@ GstPad* MediaInputImplHdmi::get_request_pad(bool is_video)
 gint MediaInputImplHdmi::set_property(const IMessagePtr &msg)
 {
   return 0;
+}
+
+void MediaInputImplHdmi::handle_bus_msg_error(GstBus *bus, GstMessage *msg)
+{
+  ALOG_TRACE;
+  do {
+    state_ = kStreamStateInvalid;
+    gst_element_set_state(GST_ELEMENT(bin_), GST_STATE_PAUSED);
+  } while(0);
 }
 
 GstPad* MediaInputImplHdmi::create_video_src_pad()

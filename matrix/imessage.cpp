@@ -1,6 +1,7 @@
 #include "imessage.h"
 
 #include <sys/time.h>
+#include <sstream>
 
 #include "imessage_thread_manager.h"
 
@@ -141,6 +142,39 @@ bool IMessage::find_string(const char *name, string &value)
     return true;
   }
   return false;
+}
+
+string IMessage::to_string()
+{
+  std::ostringstream oss;
+
+  for (auto it : umap_attr_) {
+    oss << it.first;
+    switch(it.second->type_) {
+      case Attribute::kAttrTypeBool:
+        oss << " bool:" << (it.second->value_.vbool_ ? "true" : "false") << "\n";
+        break;
+      case Attribute::kAttrTypeInt32:
+        oss << " int32:" << it.second->value_.vint32_ << "\n";
+        break;
+      case Attribute::kAttrTypeInt64:
+        oss << " int64:" << it.second->value_.vint64_ << "\n";
+        break;
+      case Attribute::kAttrTypeSizet:
+        oss << " sizet:" << it.second->value_.vsizet_ << "\n";
+        break;
+      case Attribute::kAttrTypeFloat:
+        oss << " float:" << it.second->value_.vfloat_ << "\n";
+        break;
+      case Attribute::kAttrTypeString:
+        oss << " string:" << it.second->value_.vstring_->c_str() << "\n";
+        break;
+      default:
+        break;
+    }
+  }
+
+  return oss.str();
 }
 
 void IMessage::emplace_attr(const char *name, AttributePtr &&attr)

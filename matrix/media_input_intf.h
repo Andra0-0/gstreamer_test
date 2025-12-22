@@ -7,6 +7,7 @@
 
 #include "noncopyable.h"
 #include "imessage.h"
+#include "3rdparty/sigslot/sigslot.h"
 
 namespace mmx {
 
@@ -69,13 +70,19 @@ public:
 
   virtual gint set_property(const IMessagePtr &msg) { return 0; }
 
-  virtual gint id() { return id_; }
+  virtual gint id() const { return id_; }
 
-  virtual gint state() { return state_; }
+  virtual gint state() const { return state_; }
 
-  virtual const char *name() { return name_.c_str(); }
+  virtual const char *name() const { return name_.c_str(); }
 
-  virtual const char *src_name() { return src_name_.c_str(); }
+  virtual const char *src_name() const { return src_name_.c_str(); }
+
+  virtual void handle_bus_msg_error(GstBus *bus, GstMessage *msg) = 0;
+
+  sigslot::signal1<const MediaInputIntf*> signal_indev_video_pad_added;
+  sigslot::signal1<const MediaInputIntf*> signal_indev_no_more_pads;
+  sigslot::signal1<const MediaInputIntf*> signal_indev_end_of_stream;
 
   friend class MediaInputModule;
 protected:

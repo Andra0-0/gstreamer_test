@@ -34,6 +34,8 @@ public:
 
   virtual gint set_property(const IMessagePtr &msg) override;
 
+  virtual void handle_bus_msg_error(GstBus *bus, GstMessage *msg) override;
+
 protected:
   GstPad* create_video_src_pad();
 

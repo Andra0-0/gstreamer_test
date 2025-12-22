@@ -320,6 +320,12 @@ MediaInputIntfPtr MediaInputModule::create(const MediaInputConfig &cfg)
     ret->src_name_ = cfg.srcname_;
     ret->width_ = cfg.width_;
     ret->height_ = cfg.height_;
+    ret->signal_indev_video_pad_added.connect(this,
+            &MediaInputModule::on_indev_video_pad_added);
+    ret->signal_indev_no_more_pads.connect(this,
+            &MediaInputModule::on_indev_no_more_pads);
+    ret->signal_indev_end_of_stream.connect(this,
+            &MediaInputModule::on_indev_end_of_stream);
     ALOG_BREAK_IF(0 != ret->init());
 
     GstElement *new_bin = ret->get_bin();
@@ -364,14 +370,19 @@ string MediaInputModule::get_info()
 
 void MediaInputModule::handle_message(const IMessagePtr &msg)
 {
+  int id;
+
   do {
     if (msg->what() == IMSG_INPUT_STREAM_IS_READY) {
-      int id;
       ALOG_BREAK_IF(!msg->find_int32("id", id));
       // gst_element_sync_state_with_parent(indev_array_[id]->get_bin());
       IMessagePtr imsg = std::make_shared<IMessage>(
               IMSG_PIPE_READY_TO_PAUSED_PREROLL, MediaMatrix::instance().get());
       imsg->send();
+    } else if (msg->what() == IMSG_INPUT_DEVICE_RETRY) {
+      ALOG_BREAK_IF(!msg->find_int32("id", id));
+      ALOGD("Attempting soft-restart of input bin %s", indev_array_[id]->name());
+      indev_array_[id]->start();
     }
   } while(0);
 }
@@ -437,7 +448,7 @@ GstPad* MediaInputModule::get_request_pad(const MediaInputIntfPtr &ptr, bool is_
  * 视频流准备完成
  * 检查所有input-selector，是否需要切换备用流到主流
  */
-void MediaInputModule::on_indev_video_pad_added(MediaInputIntf *ptr)
+void MediaInputModule::on_indev_video_pad_added(const MediaInputIntf *ptr)
 {
   ALOG_TRACE;
   MediaInputIntfPtr input;
@@ -447,7 +458,9 @@ void MediaInputModule::on_indev_video_pad_added(MediaInputIntf *ptr)
     input = indev_array_[ptr->id()];
 
     for (auto it : inpad_video_switch_) {
-      it.second->reconnect(input);
+      if (it.second->main_stream_name() == input->name()) {
+        it.second->reconnect(input);
+      }
     }
     IMessagePtr imsg = std::make_shared<IMessage>(IMSG_INPUT_STREAM_IS_READY, this);
     imsg->set_int32("id", ptr->id());
@@ -455,7 +468,7 @@ void MediaInputModule::on_indev_video_pad_added(MediaInputIntf *ptr)
   } while(0);
 }
 
-void MediaInputModule::on_indev_no_more_pads(MediaInputIntf *ptr)
+void MediaInputModule::on_indev_no_more_pads(const MediaInputIntf *ptr)
 {
   ALOG_TRACE;
   MediaInputIntfPtr input;
@@ -469,10 +482,27 @@ void MediaInputModule::on_indev_no_more_pads(MediaInputIntf *ptr)
   } while(0);
 }
 
+void MediaInputModule::on_indev_end_of_stream(const MediaInputIntf *ptr)
+{
+  ALOG_TRACE;
+  MediaInputIntfPtr input;
+
+  do {
+    ALOG_BREAK_IF(!ptr);
+    input = indev_array_[ptr->id()];
+
+    for (auto it : inpad_video_switch_) {
+      if (it.second->main_stream_name() == input->name()) {
+        it.second->sswitch(InputPadSwitch::kTypeStreamFallback1);
+      }
+    }
+  } while(0);
+}
+
 /**
  * MediaMatrix先检查GstMessage，错误发生在MediaInputModule内部，则从这处理
  */
-void MediaInputModule::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg)
+void MediaInputModule::handle_bus_msg_error(GstBus *bus, GstMessage *msg)
 {
   ALOG_TRACE;
   // GstElement *elem;
@@ -490,16 +520,17 @@ void MediaInputModule::on_handle_bus_msg_error(GstBus *bus, GstMessage *msg)
       if (gst_object_has_ancestor(msg->src, GST_OBJECT(bin))) {
         ALOGD("Detected error in input %s (id=%d)", input->name(), input->id());
 
-        gst_element_set_state(bin, GST_STATE_PAUSED);
-        // TODO 是否需要软重启？
-        // ALOGD("Attempting soft-restart of input bin %s", input->name());
-        // gst_element_set_state(bin, GST_STATE_PLAYING);
-
-        // FIXME 备用流失败是否要考虑？
-        // switch_selector(input, false);
         for (auto it : inpad_video_switch_) {
-          it.second->sswitch(InputPadSwitch::kTypeStreamFallback1);
+          if (it.second->main_stream_name() == input->name()) {
+            it.second->sswitch(InputPadSwitch::kTypeStreamFallback1);
+          }
         }
+        input->handle_bus_msg_error(bus, msg);
+
+        IMessagePtr imsg = std::make_shared<IMessage>(IMSG_INPUT_DEVICE_RETRY, this);
+        imsg->set_int32("id", input->id());
+        imsg->send(5000000); // 5s
+        break;
       }
     }
   } while(0);

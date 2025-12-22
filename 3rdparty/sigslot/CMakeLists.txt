@@ -1,0 +1,12 @@
+set(LIBSIGSLOT_HEADER
+  sigslot.h
+)
+
+set(LIBSIGSLOT_SOURCE
+  sigslot.cc
+)
+
+add_library(sigslot ${LIBSIGSLOT_SOURCE})
+
+install(TARGETS sigslot DESTINATION ${LIBRARY_OUTPUT_DIRECTORY})
+install(FILES ${LIBSIGSLOT_HEADER} DESTINATION ${INCLUDE_OUTPUT_DIRECTORY}/sigslot)

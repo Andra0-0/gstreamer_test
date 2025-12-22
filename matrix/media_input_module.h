@@ -93,7 +93,7 @@ private:
 /**
  * 视频输入流管理模块，负责创建销毁视频流
  */
-class MediaInputModule : public IMessageThread {
+class MediaInputModule : public IMessageThread, public sigslot::has_slots<> {
 public:
   static inline MediaInputModulePtr instance() {
     if (!instance_) {
@@ -119,9 +119,11 @@ public:
 
   GstPad* get_request_pad(const MediaInputIntfPtr &ptr, bool is_video=true);
 
-  void on_indev_video_pad_added(MediaInputIntf *ptr);
-  void on_indev_no_more_pads(MediaInputIntf *ptr);
-  void on_handle_bus_msg_error(GstBus *bus, GstMessage *msg);
+  void handle_bus_msg_error(GstBus *bus, GstMessage *msg);
+
+  void on_indev_video_pad_added(const MediaInputIntf *ptr);
+  void on_indev_no_more_pads(const MediaInputIntf *ptr);
+  void on_indev_end_of_stream(const MediaInputIntf *ptr);
 
 protected:
   MediaInputModule();

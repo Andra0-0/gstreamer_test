@@ -111,8 +111,13 @@ gint MediaInputImplImage::deinit()
 
 gint MediaInputImplImage::start()
 {
+  GstStateChangeReturn ret;
+
   do {
     state_ = kStreamStatePlaying;
+
+    ret = gst_element_set_state(GST_ELEMENT(bin_), GST_STATE_PLAYING);
+    ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
   } while(0);
 
   return 0;
@@ -120,8 +125,13 @@ gint MediaInputImplImage::start()
 
 gint MediaInputImplImage::pause()
 {
+  GstStateChangeReturn ret;
+
   do {
     state_ = kStreamStatePause;
+
+    ret = gst_element_set_state(GST_ELEMENT(bin_), GST_STATE_PAUSED);
+    ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
   } while(0);
 
   return 0;
@@ -185,6 +195,11 @@ gint MediaInputImplImage::set_property(const IMessagePtr &msg)
   } while(0);
 
   return 0;
+}
+
+void MediaInputImplImage::handle_bus_msg_error(GstBus *bus, GstMessage *msg)
+{
+
 }
 
 GstPad* MediaInputImplImage::create_video_src_pad()

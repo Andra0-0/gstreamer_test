@@ -41,12 +41,12 @@ public:
 
   void handle_bus_msg();
 
-  static gboolean on_handle_bus_msg_error(GstBus *bus, GstMessage *msg, void *data);
-  static gboolean on_handle_bus_msg_eos(GstBus *bus, GstMessage *msg, void *data);
-  static gboolean on_handle_bus_msg_state_change(GstBus *bus, GstMessage *msg, void *data);
-
 protected:
   virtual void handle_message(const IMessagePtr &msg) override;
+
+  gboolean inter_handle_bus_msg_eos(GstBus *bus, GstMessage *msg, void *data);
+  gboolean inter_handle_bus_msg_error(GstBus *bus, GstMessage *msg, void *data);
+  gboolean inter_handle_bus_msg_state_change(GstBus *bus, GstMessage *msg, void *data);
 
 private:
   static std::mutex inslock_;

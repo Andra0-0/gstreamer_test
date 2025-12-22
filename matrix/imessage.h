@@ -89,6 +89,8 @@ public:
   bool find_float(const char *name, float &value);
   bool find_string(const char *name, string &value);
 
+  string to_string();
+
 protected:
   void emplace_attr(const char *name, AttributePtr &&attr);
 

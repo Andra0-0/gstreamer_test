@@ -149,7 +149,7 @@ int IMessageThreadManager::thread_loop()
       std::lock_guard<mutex> _l(msg_delayed_lock_);
       uint64_t curr_time_ns = get_curr_clock_ns();
       for (; !msg_delayed_queue_.empty(); ) {
-        auto &msg_top = msg_delayed_queue_.top();
+        auto msg_top = msg_delayed_queue_.top();
         if (curr_time_ns >= msg_top->dst_time()) {
           msg_delayed_queue_.pop();
           msg_queue_.enqueue(std::move(msg_top));
