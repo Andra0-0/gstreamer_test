@@ -74,8 +74,8 @@ gint MediaMatrix::init(int argc, char *argv[])
     vmixcfg2.style_ = mixer_->get_style_from_layout(vmixcfg2.layout_, vmixcfg2.index_);
 
     cfg2.type_ = kMediaInputUridb;
-    // cfg2.uri_ = "rtsp://192.168.3.137:8554/h264ESVideoTest";
-    cfg2.uri_ = "file:///home/cat/test/test.mp4";
+    cfg2.uri_ = "rtsp://192.168.3.137:8554/h264ESVideoTest";
+    // cfg2.uri_ = "file:///home/cat/test/test.mp4";
     // cfg2.uri_ = "rtsp://192.168.3.137:8554/mpeg2TransportStreamTest";
     cfg2.srcname_ = "test-input2";
     cfg2.width_ = vmixcfg2.style_.width;
@@ -328,7 +328,7 @@ gboolean MediaMatrix::inter_handle_bus_msg_error(GstBus *bus, GstMessage *msg, v
 
 gboolean MediaMatrix::inter_handle_bus_msg_eos(GstBus *bus, GstMessage *msg, void *data)
 {
-  ALOGD("MediaMatrix End-Of-Stream reached.");
+  ALOGD("\e[1;31mMediaMatrix End-Of-Stream reached.\e[0m");
   return TRUE;
 }
 
@@ -429,7 +429,7 @@ void MediaMatrix::handle_message(const IMessagePtr &msg)
 
     } else if (msg->what() == IMSG_PIPE_READY_TO_PAUSED_PREROLL) {
       GstState state, pending;
-      gst_element_get_state(pipeline_, &state, &pending, NULL);
+      gst_element_get_state(pipeline_, &state, &pending, 0);
       ALOGD("\e[1;31mIMSG_PIPE_READY_TO_PAUSED_PREROLL, s:%d\e[0m", state);
 
       if (state == GST_STATE_PLAYING) { // uridecodebin preroll, but not work

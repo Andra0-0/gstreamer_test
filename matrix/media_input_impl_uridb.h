@@ -45,14 +45,15 @@ public:
   static void on_uridb_no_more_pads(GstElement *obj, void *data);
   static void on_uridb_element_added(GstElement *obj, GstElement *elem, void *data);
   static void on_uridb_unknown_type(GstElement *obj, GstPad *pad, GstCaps caps, void *data);
-  // capture uridecodebin eos signal
-  static void on_uridb_end_of_stream(GstPad *pad, gpointer data);
 
 protected:
-  GstPad* create_video_src_pad();
-  void create_video_process(GstPad *pad);
+  GstPad* inter_get_video_pad();
 
-  void create_audio_process(GstPad *pad);
+  void inter_handle_video_pad(GstPad *pad);
+
+  void inter_handle_audio_pad(GstPad *pad);
+
+  GstPadProbeReturn on_handle_end_of_stream(GstPadProbeInfo *info);
 
 private:
   recursive_mutex lock_;
@@ -69,7 +70,7 @@ private:
 
   GstElement *audio_tee_;
 
-  /*Debug*///IPadProberPtr prober_;
+  IPadProberPtr prober_;
 
   // GstElement *fakesink_;
   // GstElement *fakequeue_;

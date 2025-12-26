@@ -75,3 +75,4 @@ include_directories(
 
 add_subdirectory(matrix)
 # add_subdirectory(rgavideoconvert)
+add_subdirectory(rgacompositor)

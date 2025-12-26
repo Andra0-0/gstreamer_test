@@ -1,6 +1,7 @@
 #include "media_input_impl_uridb.h"
 
 #include <sstream>
+#include <functional>
 
 #include "debug.h"
 
@@ -196,7 +197,7 @@ GstPad* MediaInputImplUridb::get_request_pad(bool is_video)
     ALOG_BREAK_IF(state_ == kStreamStateInvalid);
 
     if (is_video) {
-      pad = create_video_src_pad();
+      pad = inter_get_video_pad();
     } else {
       // TODO
     }
@@ -255,7 +256,7 @@ void MediaInputImplUridb::on_uridb_pad_added(GstElement *obj, GstPad *pad, void 
     if (g_str_has_prefix(pad_type, "video/")) {
       if (!self->video_linked_) {
         // 链接视频处理流程
-        self->create_video_process(pad);
+        self->inter_handle_video_pad(pad);
         // 回调，创建queue连接tee，重连input-selector
         // MediaInputModule::instance()->on_indev_video_pad_added(self);
         self->signal_indev_video_pad_added(self);
@@ -322,16 +323,10 @@ void MediaInputImplUridb::on_uridb_unknown_type(GstElement *obj, GstPad *pad, Gs
   ALOG_TRACE;
 }
 
-void MediaInputImplUridb::on_uridb_end_of_stream(GstPad *pad, gpointer data)
-{
-  MediaInputImplUridb *const self = static_cast<MediaInputImplUridb*>(data);
-  self->signal_indev_end_of_stream(self);
-}
-
 /**
  * 创建新的src_pad和video queue到bin
  */
-GstPad* MediaInputImplUridb::create_video_src_pad()
+GstPad* MediaInputImplUridb::inter_get_video_pad()
 {
   ALOG_TRACE;
   GstElement *new_queue;
@@ -354,9 +349,6 @@ GstPad* MediaInputImplUridb::create_video_src_pad()
 
     GstPad *queue_src_pad = gst_element_get_static_pad(new_queue, "src");
     if (queue_src_pad) {
-      // 捕获queue src pad eos信号
-      g_signal_connect(queue_src_pad, "eos", G_CALLBACK(on_uridb_end_of_stream), this);
-      // 创建ghost pad
       new_pad = pad_manager_->add_pad(queue_src_pad);
       gst_object_unref(queue_src_pad);
     } else {
@@ -378,27 +370,12 @@ GstPad* MediaInputImplUridb::create_video_src_pad()
 /**
  * 创建视频流处理
  */
-void MediaInputImplUridb::create_video_process(GstPad *pad)
+void MediaInputImplUridb::inter_handle_video_pad(GstPad *pad)
 {
   do {
-    // gst_element_sync_state_with_parent(video_cvt_);
-    // gst_element_sync_state_with_parent(video_caps_);
-    // gst_element_sync_state_with_parent(video_tee_);
-
     if (!gst_element_link_many(video_cvt_, video_scale_, video_caps_, video_tee_,/* fakequeue_, fakesink_,*/ NULL)) {
       ALOGD("Failed to link elements");
     }
-    // auto it = video_queue_.find("video_src_0");
-    // ALOG_BREAK_IF(it == video_queue_.end());
-    // GstElement *queue = it->second;
-
-    // GstPad *queue_sink_pad = gst_element_get_static_pad(queue, "sink");
-    // GstPad *tee_src_pad = gst_element_get_request_pad(video_tee_, "src_%u");
-    // if (gst_pad_link(tee_src_pad, queue_sink_pad) != GST_PAD_LINK_OK) {
-    //   ALOGD("Error to link tee_src_pad -> queue_sink_pad");
-    // }
-    // if (queue_sink_pad) gst_object_unref(queue_sink_pad);
-    // if (tee_src_pad) gst_object_unref(tee_src_pad);
 
     GstPad *sink_pad = gst_element_get_static_pad(video_cvt_, "sink");
     if (gst_pad_is_linked(sink_pad)) {
@@ -408,13 +385,32 @@ void MediaInputImplUridb::create_video_process(GstPad *pad)
     if (gst_pad_link(pad, sink_pad) != GST_PAD_LINK_OK) {
       ALOGD("Error to link uridecodebin pad -> videoconvert");
     }
+    if (!prober_) {
+      IPadProber::IPadHandler handler;
+      handler = std::bind(&mmx::MediaInputImplUridb::on_handle_end_of_stream,
+              this, std::placeholders::_1);
+      prober_ = std::make_shared<IPadProber>(sink_pad,
+              GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, handler);
+    }
     gst_object_unref(sink_pad);
   } while(0);
 }
 
-void MediaInputImplUridb::create_audio_process(GstPad *pad)
+void MediaInputImplUridb::inter_handle_audio_pad(GstPad *pad)
 {
   // TODO
+}
+
+/**
+ * Capture uridecodebin eos signal
+ */
+GstPadProbeReturn MediaInputImplUridb::on_handle_end_of_stream(GstPadProbeInfo *info)
+{
+  if (GST_EVENT_TYPE(GST_PAD_PROBE_INFO_DATA(info)) == GST_EVENT_EOS) {
+    signal_indev_end_of_stream(this);
+    return GST_PAD_PROBE_DROP;
+  }
+  return GST_PAD_PROBE_OK;
 }
 
 }
