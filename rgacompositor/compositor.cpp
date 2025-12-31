@@ -272,12 +272,12 @@ gst_compositor_pad_set_property (GObject * object, guint prop_id,
       pad->alpha = g_value_get_double (value);
       break;
     case PROP_PAD_OPERATOR:
-      pad->op = g_value_get_enum (value);
+      pad->op = (GstCompositorOperator)g_value_get_enum (value);
       gst_video_aggregator_pad_set_needs_alpha (GST_VIDEO_AGGREGATOR_PAD (pad),
           pad->op == COMPOSITOR_OPERATOR_ADD);
       break;
     case PROP_PAD_SIZING_POLICY:
-      pad->sizing_policy = g_value_get_enum (value);
+      pad->sizing_policy = (GstCompositorSizingPolicy)g_value_get_enum (value);
       gst_video_aggregator_convert_pad_update_conversion_info
           (GST_VIDEO_AGGREGATOR_CONVERT_PAD (pad));
       break;
@@ -586,7 +586,7 @@ gst_compositor_pad_prepare_frame_start (GstVideoAggregatorPad * pad,
       continue;
     }
 
-    if (_pad_obscures_rectangle (vagg, l->data, frame_rect)) {
+    if (_pad_obscures_rectangle (vagg, (GstVideoAggregatorPad *)l->data, frame_rect)) {
       frame_obscured = TRUE;
       break;
     }
@@ -679,28 +679,28 @@ gst_compositor_pad_class_init (GstCompositorPadClass * klass)
   g_object_class_install_property (gobject_class, PROP_PAD_XPOS,
       g_param_spec_int ("xpos", "X Position", "X Position of the picture",
           G_MININT, G_MAXINT, DEFAULT_PAD_XPOS,
-          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+          (GParamFlags)(G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_PAD_YPOS,
       g_param_spec_int ("ypos", "Y Position", "Y Position of the picture",
           G_MININT, G_MAXINT, DEFAULT_PAD_YPOS,
-          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+          (GParamFlags)(G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_PAD_WIDTH,
       g_param_spec_int ("width", "Width", "Width of the picture",
           G_MININT, G_MAXINT, DEFAULT_PAD_WIDTH,
-          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+          (GParamFlags)(G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_PAD_HEIGHT,
       g_param_spec_int ("height", "Height", "Height of the picture",
           G_MININT, G_MAXINT, DEFAULT_PAD_HEIGHT,
-          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+          (GParamFlags)(G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_PAD_ALPHA,
       g_param_spec_double ("alpha", "Alpha", "Alpha of the picture", 0.0, 1.0,
           DEFAULT_PAD_ALPHA,
-          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+          (GParamFlags)(G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject_class, PROP_PAD_OPERATOR,
       g_param_spec_enum ("operator", "Operator",
           "Blending operator to use for blending this pad over the previous ones",
           GST_TYPE_COMPOSITOR_OPERATOR, DEFAULT_PAD_OPERATOR,
-          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+          (GParamFlags)(G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS)));
 
   /**
    * GstCompositorPad:sizing-policy:
@@ -716,7 +716,7 @@ gst_compositor_pad_class_init (GstCompositorPadClass * klass)
       g_param_spec_enum ("sizing-policy", "Sizing policy",
           "Sizing policy to use for image scaling",
           GST_TYPE_COMPOSITOR_SIZING_POLICY, DEFAULT_PAD_SIZING_POLICY,
-          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+          (GParamFlags)(G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS)));
 
   vaggpadclass->prepare_frame_start =
       GST_DEBUG_FUNCPTR (gst_compositor_pad_prepare_frame_start);
@@ -724,7 +724,7 @@ gst_compositor_pad_class_init (GstCompositorPadClass * klass)
   vaggcpadclass->create_conversion_info =
       GST_DEBUG_FUNCPTR (gst_compositor_pad_create_conversion_info);
 
-  gst_type_mark_as_plugin_api (GST_TYPE_COMPOSITOR_SIZING_POLICY, 0);
+  gst_type_mark_as_plugin_api (GST_TYPE_COMPOSITOR_SIZING_POLICY, (GstPluginAPIFlags)0);
 }
 
 static void
@@ -789,7 +789,7 @@ gst_compositor_set_property (GObject * object,
 
   switch (prop_id) {
     case PROP_BACKGROUND:
-      self->background = g_value_get_enum (value);
+      self->background = (GstCompositorBackground)g_value_get_enum (value);
       break;
     case PROP_ZERO_SIZE_IS_UNSCALED:
       self->zero_size_is_unscaled = g_value_get_boolean (value);
@@ -831,306 +831,306 @@ set_functions (GstCompositor * self, const GstVideoInfo * info)
 
   self->intermediate_info = *info;
 
-  switch (GST_VIDEO_INFO_FORMAT (info)) {
-    case GST_VIDEO_FORMAT_AYUV:
-      self->blend = gst_compositor_blend_ayuv;
-      self->overlay = gst_compositor_overlay_ayuv;
-      self->fill_checker = gst_compositor_fill_checker_ayuv;
-      self->fill_color = gst_compositor_fill_color_ayuv;
-      break;
-    case GST_VIDEO_FORMAT_VUYA:
-      self->blend = gst_compositor_blend_vuya;
-      self->overlay = gst_compositor_overlay_vuya;
-      self->fill_checker = gst_compositor_fill_checker_vuya;
-      self->fill_color = gst_compositor_fill_color_vuya;
-      break;
-    case GST_VIDEO_FORMAT_ARGB:
-      self->blend = gst_compositor_blend_argb;
-      self->overlay = gst_compositor_overlay_argb;
-      self->fill_checker = gst_compositor_fill_checker_argb;
-      self->fill_color = gst_compositor_fill_color_argb;
-      break;
-    case GST_VIDEO_FORMAT_BGRA:
-      self->blend = gst_compositor_blend_bgra;
-      self->overlay = gst_compositor_overlay_bgra;
-      self->fill_checker = gst_compositor_fill_checker_bgra;
-      self->fill_color = gst_compositor_fill_color_bgra;
-      break;
-    case GST_VIDEO_FORMAT_ABGR:
-      self->blend = gst_compositor_blend_abgr;
-      self->overlay = gst_compositor_overlay_abgr;
-      self->fill_checker = gst_compositor_fill_checker_abgr;
-      self->fill_color = gst_compositor_fill_color_abgr;
-      break;
-    case GST_VIDEO_FORMAT_RGBA:
-      self->blend = gst_compositor_blend_rgba;
-      self->overlay = gst_compositor_overlay_rgba;
-      self->fill_checker = gst_compositor_fill_checker_rgba;
-      self->fill_color = gst_compositor_fill_color_rgba;
-      break;
-    case GST_VIDEO_FORMAT_Y444_16LE:
-      self->blend = gst_compositor_blend_y444_16le;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_y444_16le;
-      self->fill_color = gst_compositor_fill_color_y444_16le;
-      break;
-    case GST_VIDEO_FORMAT_Y444_16BE:
-      self->blend = gst_compositor_blend_y444_16be;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_y444_16be;
-      self->fill_color = gst_compositor_fill_color_y444_16be;
-      break;
-    case GST_VIDEO_FORMAT_Y444_12LE:
-      self->blend = gst_compositor_blend_y444_12le;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_y444_12le;
-      self->fill_color = gst_compositor_fill_color_y444_12le;
-      break;
-    case GST_VIDEO_FORMAT_Y444_12BE:
-      self->blend = gst_compositor_blend_y444_12be;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_y444_12be;
-      self->fill_color = gst_compositor_fill_color_y444_12be;
-      break;
-    case GST_VIDEO_FORMAT_Y444_10LE:
-      self->blend = gst_compositor_blend_y444_10le;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_y444_10le;
-      self->fill_color = gst_compositor_fill_color_y444_10le;
-      break;
-    case GST_VIDEO_FORMAT_Y444_10BE:
-      self->blend = gst_compositor_blend_y444_10be;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_y444_10be;
-      self->fill_color = gst_compositor_fill_color_y444_10be;
-      break;
-    case GST_VIDEO_FORMAT_Y444:
-      self->blend = gst_compositor_blend_y444;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_y444;
-      self->fill_color = gst_compositor_fill_color_y444;
-      break;
-    case GST_VIDEO_FORMAT_Y42B:
-      self->blend = gst_compositor_blend_y42b;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_y42b;
-      self->fill_color = gst_compositor_fill_color_y42b;
-      break;
-    case GST_VIDEO_FORMAT_YUY2:
-      self->blend = gst_compositor_blend_yuy2;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_yuy2;
-      self->fill_color = gst_compositor_fill_color_yuy2;
-      break;
-    case GST_VIDEO_FORMAT_UYVY:
-      self->blend = gst_compositor_blend_uyvy;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_uyvy;
-      self->fill_color = gst_compositor_fill_color_uyvy;
-      break;
-    case GST_VIDEO_FORMAT_YVYU:
-      self->blend = gst_compositor_blend_yvyu;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_yvyu;
-      self->fill_color = gst_compositor_fill_color_yvyu;
-      break;
-    case GST_VIDEO_FORMAT_I422_12LE:
-      self->blend = gst_compositor_blend_i422_12le;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_i422_12le;
-      self->fill_color = gst_compositor_fill_color_i422_12le;
-      break;
-    case GST_VIDEO_FORMAT_I422_12BE:
-      self->blend = gst_compositor_blend_i422_12be;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_i422_12be;
-      self->fill_color = gst_compositor_fill_color_i422_12be;
-      break;
-    case GST_VIDEO_FORMAT_I422_10LE:
-      self->blend = gst_compositor_blend_i422_10le;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_i422_10le;
-      self->fill_color = gst_compositor_fill_color_i422_10le;
-      break;
-    case GST_VIDEO_FORMAT_I422_10BE:
-      self->blend = gst_compositor_blend_i422_10be;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_i422_10be;
-      self->fill_color = gst_compositor_fill_color_i422_10be;
-      break;
-    case GST_VIDEO_FORMAT_I420_12LE:
-      self->blend = gst_compositor_blend_i420_12le;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_i420_12le;
-      self->fill_color = gst_compositor_fill_color_i420_12le;
-      break;
-    case GST_VIDEO_FORMAT_I420_12BE:
-      self->blend = gst_compositor_blend_i420_12be;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_i420_12be;
-      self->fill_color = gst_compositor_fill_color_i420_12be;
-      break;
-    case GST_VIDEO_FORMAT_I420_10LE:
-      self->blend = gst_compositor_blend_i420_10le;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_i420_10le;
-      self->fill_color = gst_compositor_fill_color_i420_10le;
-      break;
-    case GST_VIDEO_FORMAT_I420_10BE:
-      self->blend = gst_compositor_blend_i420_10be;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_i420_10be;
-      self->fill_color = gst_compositor_fill_color_i420_10be;
-      break;
-    case GST_VIDEO_FORMAT_I420:
-      self->blend = gst_compositor_blend_i420;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_i420;
-      self->fill_color = gst_compositor_fill_color_i420;
-      break;
-    case GST_VIDEO_FORMAT_YV12:
-      self->blend = gst_compositor_blend_yv12;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_yv12;
-      self->fill_color = gst_compositor_fill_color_yv12;
-      break;
-    case GST_VIDEO_FORMAT_NV12:
-      self->blend = gst_compositor_blend_nv12;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_nv12;
-      self->fill_color = gst_compositor_fill_color_nv12;
-      break;
-    case GST_VIDEO_FORMAT_NV21:
-      self->blend = gst_compositor_blend_nv21;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_nv21;
-      self->fill_color = gst_compositor_fill_color_nv21;
-      break;
-    case GST_VIDEO_FORMAT_Y41B:
-      self->blend = gst_compositor_blend_y41b;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_y41b;
-      self->fill_color = gst_compositor_fill_color_y41b;
-      break;
-    case GST_VIDEO_FORMAT_RGB:
-      self->blend = gst_compositor_blend_rgb;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_rgb;
-      self->fill_color = gst_compositor_fill_color_rgb;
-      break;
-    case GST_VIDEO_FORMAT_BGR:
-      self->blend = gst_compositor_blend_bgr;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_bgr;
-      self->fill_color = gst_compositor_fill_color_bgr;
-      break;
-    case GST_VIDEO_FORMAT_xRGB:
-      self->blend = gst_compositor_blend_xrgb;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_xrgb;
-      self->fill_color = gst_compositor_fill_color_xrgb;
-      break;
-    case GST_VIDEO_FORMAT_xBGR:
-      self->blend = gst_compositor_blend_xbgr;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_xbgr;
-      self->fill_color = gst_compositor_fill_color_xbgr;
-      break;
-    case GST_VIDEO_FORMAT_RGBx:
-      self->blend = gst_compositor_blend_rgbx;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_rgbx;
-      self->fill_color = gst_compositor_fill_color_rgbx;
-      break;
-    case GST_VIDEO_FORMAT_BGRx:
-      self->blend = gst_compositor_blend_bgrx;
-      self->overlay = self->blend;
-      self->fill_checker = gst_compositor_fill_checker_bgrx;
-      self->fill_color = gst_compositor_fill_color_bgrx;
-      break;
-    case GST_VIDEO_FORMAT_ARGB64:
-      self->blend = gst_compositor_blend_argb64;
-      self->overlay = gst_compositor_overlay_argb64;
-      self->fill_checker = gst_compositor_fill_checker_argb64;
-      self->fill_color = gst_compositor_fill_color_argb64;
-      break;
-    case GST_VIDEO_FORMAT_AYUV64:
-      self->blend = gst_compositor_blend_ayuv64;
-      self->overlay = gst_compositor_overlay_ayuv64;
-      self->fill_checker = gst_compositor_fill_checker_ayuv64;
-      self->fill_color = gst_compositor_fill_color_ayuv64;
-      break;
-    default:
-    {
-      GstVideoFormat format = GST_VIDEO_FORMAT_UNKNOWN;
-      GstVideoInfo *intermediate_info = &self->intermediate_info;
-      if (GST_VIDEO_INFO_IS_YUV (info)) {
-        if (GST_VIDEO_INFO_COMP_DEPTH (info, 0) == 8)
-          format = GST_VIDEO_FORMAT_AYUV;
-        else
-          format = GST_VIDEO_FORMAT_AYUV64;
-      } else {
-        if (GST_VIDEO_INFO_COMP_DEPTH (info, 0) == 8)
-          format = GST_VIDEO_FORMAT_ARGB;
-        else
-          format = GST_VIDEO_FORMAT_ARGB64;
-      }
+  // switch (GST_VIDEO_INFO_FORMAT (info)) {
+  //   case GST_VIDEO_FORMAT_AYUV:
+  //     self->blend = gst_compositor_blend_ayuv;
+  //     self->overlay = gst_compositor_overlay_ayuv;
+  //     self->fill_checker = gst_compositor_fill_checker_ayuv;
+  //     self->fill_color = gst_compositor_fill_color_ayuv;
+  //     break;
+  //   case GST_VIDEO_FORMAT_VUYA:
+  //     self->blend = gst_compositor_blend_vuya;
+  //     self->overlay = gst_compositor_overlay_vuya;
+  //     self->fill_checker = gst_compositor_fill_checker_vuya;
+  //     self->fill_color = gst_compositor_fill_color_vuya;
+  //     break;
+  //   case GST_VIDEO_FORMAT_ARGB:
+  //     self->blend = gst_compositor_blend_argb;
+  //     self->overlay = gst_compositor_overlay_argb;
+  //     self->fill_checker = gst_compositor_fill_checker_argb;
+  //     self->fill_color = gst_compositor_fill_color_argb;
+  //     break;
+  //   case GST_VIDEO_FORMAT_BGRA:
+  //     self->blend = gst_compositor_blend_bgra;
+  //     self->overlay = gst_compositor_overlay_bgra;
+  //     self->fill_checker = gst_compositor_fill_checker_bgra;
+  //     self->fill_color = gst_compositor_fill_color_bgra;
+  //     break;
+  //   case GST_VIDEO_FORMAT_ABGR:
+  //     self->blend = gst_compositor_blend_abgr;
+  //     self->overlay = gst_compositor_overlay_abgr;
+  //     self->fill_checker = gst_compositor_fill_checker_abgr;
+  //     self->fill_color = gst_compositor_fill_color_abgr;
+  //     break;
+  //   case GST_VIDEO_FORMAT_RGBA:
+  //     self->blend = gst_compositor_blend_rgba;
+  //     self->overlay = gst_compositor_overlay_rgba;
+  //     self->fill_checker = gst_compositor_fill_checker_rgba;
+  //     self->fill_color = gst_compositor_fill_color_rgba;
+  //     break;
+  //   case GST_VIDEO_FORMAT_Y444_16LE:
+  //     self->blend = gst_compositor_blend_y444_16le;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_y444_16le;
+  //     self->fill_color = gst_compositor_fill_color_y444_16le;
+  //     break;
+  //   case GST_VIDEO_FORMAT_Y444_16BE:
+  //     self->blend = gst_compositor_blend_y444_16be;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_y444_16be;
+  //     self->fill_color = gst_compositor_fill_color_y444_16be;
+  //     break;
+  //   case GST_VIDEO_FORMAT_Y444_12LE:
+  //     self->blend = gst_compositor_blend_y444_12le;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_y444_12le;
+  //     self->fill_color = gst_compositor_fill_color_y444_12le;
+  //     break;
+  //   case GST_VIDEO_FORMAT_Y444_12BE:
+  //     self->blend = gst_compositor_blend_y444_12be;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_y444_12be;
+  //     self->fill_color = gst_compositor_fill_color_y444_12be;
+  //     break;
+  //   case GST_VIDEO_FORMAT_Y444_10LE:
+  //     self->blend = gst_compositor_blend_y444_10le;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_y444_10le;
+  //     self->fill_color = gst_compositor_fill_color_y444_10le;
+  //     break;
+  //   case GST_VIDEO_FORMAT_Y444_10BE:
+  //     self->blend = gst_compositor_blend_y444_10be;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_y444_10be;
+  //     self->fill_color = gst_compositor_fill_color_y444_10be;
+  //     break;
+  //   case GST_VIDEO_FORMAT_Y444:
+  //     self->blend = gst_compositor_blend_y444;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_y444;
+  //     self->fill_color = gst_compositor_fill_color_y444;
+  //     break;
+  //   case GST_VIDEO_FORMAT_Y42B:
+  //     self->blend = gst_compositor_blend_y42b;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_y42b;
+  //     self->fill_color = gst_compositor_fill_color_y42b;
+  //     break;
+  //   case GST_VIDEO_FORMAT_YUY2:
+  //     self->blend = gst_compositor_blend_yuy2;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_yuy2;
+  //     self->fill_color = gst_compositor_fill_color_yuy2;
+  //     break;
+  //   case GST_VIDEO_FORMAT_UYVY:
+  //     self->blend = gst_compositor_blend_uyvy;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_uyvy;
+  //     self->fill_color = gst_compositor_fill_color_uyvy;
+  //     break;
+  //   case GST_VIDEO_FORMAT_YVYU:
+  //     self->blend = gst_compositor_blend_yvyu;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_yvyu;
+  //     self->fill_color = gst_compositor_fill_color_yvyu;
+  //     break;
+  //   case GST_VIDEO_FORMAT_I422_12LE:
+  //     self->blend = gst_compositor_blend_i422_12le;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_i422_12le;
+  //     self->fill_color = gst_compositor_fill_color_i422_12le;
+  //     break;
+  //   case GST_VIDEO_FORMAT_I422_12BE:
+  //     self->blend = gst_compositor_blend_i422_12be;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_i422_12be;
+  //     self->fill_color = gst_compositor_fill_color_i422_12be;
+  //     break;
+  //   case GST_VIDEO_FORMAT_I422_10LE:
+  //     self->blend = gst_compositor_blend_i422_10le;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_i422_10le;
+  //     self->fill_color = gst_compositor_fill_color_i422_10le;
+  //     break;
+  //   case GST_VIDEO_FORMAT_I422_10BE:
+  //     self->blend = gst_compositor_blend_i422_10be;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_i422_10be;
+  //     self->fill_color = gst_compositor_fill_color_i422_10be;
+  //     break;
+  //   case GST_VIDEO_FORMAT_I420_12LE:
+  //     self->blend = gst_compositor_blend_i420_12le;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_i420_12le;
+  //     self->fill_color = gst_compositor_fill_color_i420_12le;
+  //     break;
+  //   case GST_VIDEO_FORMAT_I420_12BE:
+  //     self->blend = gst_compositor_blend_i420_12be;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_i420_12be;
+  //     self->fill_color = gst_compositor_fill_color_i420_12be;
+  //     break;
+  //   case GST_VIDEO_FORMAT_I420_10LE:
+  //     self->blend = gst_compositor_blend_i420_10le;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_i420_10le;
+  //     self->fill_color = gst_compositor_fill_color_i420_10le;
+  //     break;
+  //   case GST_VIDEO_FORMAT_I420_10BE:
+  //     self->blend = gst_compositor_blend_i420_10be;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_i420_10be;
+  //     self->fill_color = gst_compositor_fill_color_i420_10be;
+  //     break;
+  //   case GST_VIDEO_FORMAT_I420:
+  //     self->blend = gst_compositor_blend_i420;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_i420;
+  //     self->fill_color = gst_compositor_fill_color_i420;
+  //     break;
+  //   case GST_VIDEO_FORMAT_YV12:
+  //     self->blend = gst_compositor_blend_yv12;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_yv12;
+  //     self->fill_color = gst_compositor_fill_color_yv12;
+  //     break;
+  //   case GST_VIDEO_FORMAT_NV12:
+  //     self->blend = gst_compositor_blend_nv12;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_nv12;
+  //     self->fill_color = gst_compositor_fill_color_nv12;
+  //     break;
+  //   case GST_VIDEO_FORMAT_NV21:
+  //     self->blend = gst_compositor_blend_nv21;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_nv21;
+  //     self->fill_color = gst_compositor_fill_color_nv21;
+  //     break;
+  //   case GST_VIDEO_FORMAT_Y41B:
+  //     self->blend = gst_compositor_blend_y41b;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_y41b;
+  //     self->fill_color = gst_compositor_fill_color_y41b;
+  //     break;
+  //   case GST_VIDEO_FORMAT_RGB:
+  //     self->blend = gst_compositor_blend_rgb;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_rgb;
+  //     self->fill_color = gst_compositor_fill_color_rgb;
+  //     break;
+  //   case GST_VIDEO_FORMAT_BGR:
+  //     self->blend = gst_compositor_blend_bgr;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_bgr;
+  //     self->fill_color = gst_compositor_fill_color_bgr;
+  //     break;
+  //   case GST_VIDEO_FORMAT_xRGB:
+  //     self->blend = gst_compositor_blend_xrgb;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_xrgb;
+  //     self->fill_color = gst_compositor_fill_color_xrgb;
+  //     break;
+  //   case GST_VIDEO_FORMAT_xBGR:
+  //     self->blend = gst_compositor_blend_xbgr;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_xbgr;
+  //     self->fill_color = gst_compositor_fill_color_xbgr;
+  //     break;
+  //   case GST_VIDEO_FORMAT_RGBx:
+  //     self->blend = gst_compositor_blend_rgbx;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_rgbx;
+  //     self->fill_color = gst_compositor_fill_color_rgbx;
+  //     break;
+  //   case GST_VIDEO_FORMAT_BGRx:
+  //     self->blend = gst_compositor_blend_bgrx;
+  //     self->overlay = self->blend;
+  //     self->fill_checker = gst_compositor_fill_checker_bgrx;
+  //     self->fill_color = gst_compositor_fill_color_bgrx;
+  //     break;
+  //   case GST_VIDEO_FORMAT_ARGB64:
+  //     self->blend = gst_compositor_blend_argb64;
+  //     self->overlay = gst_compositor_overlay_argb64;
+  //     self->fill_checker = gst_compositor_fill_checker_argb64;
+  //     self->fill_color = gst_compositor_fill_color_argb64;
+  //     break;
+  //   case GST_VIDEO_FORMAT_AYUV64:
+  //     self->blend = gst_compositor_blend_ayuv64;
+  //     self->overlay = gst_compositor_overlay_ayuv64;
+  //     self->fill_checker = gst_compositor_fill_checker_ayuv64;
+  //     self->fill_color = gst_compositor_fill_color_ayuv64;
+  //     break;
+  //   default:
+  //   {
+  //     GstVideoFormat format = GST_VIDEO_FORMAT_UNKNOWN;
+  //     GstVideoInfo *intermediate_info = &self->intermediate_info;
+  //     if (GST_VIDEO_INFO_IS_YUV (info)) {
+  //       if (GST_VIDEO_INFO_COMP_DEPTH (info, 0) == 8)
+  //         format = GST_VIDEO_FORMAT_AYUV;
+  //       else
+  //         format = GST_VIDEO_FORMAT_AYUV64;
+  //     } else {
+  //       if (GST_VIDEO_INFO_COMP_DEPTH (info, 0) == 8)
+  //         format = GST_VIDEO_FORMAT_ARGB;
+  //       else
+  //         format = GST_VIDEO_FORMAT_ARGB64;
+  //     }
 
-      switch (format) {
-        case GST_VIDEO_FORMAT_AYUV:
-          self->blend = gst_compositor_blend_ayuv;
-          self->overlay = gst_compositor_overlay_ayuv;
-          self->fill_checker = gst_compositor_fill_checker_ayuv;
-          self->fill_color = gst_compositor_fill_color_ayuv;
-          break;
-        case GST_VIDEO_FORMAT_AYUV64:
-          self->blend = gst_compositor_blend_ayuv64;
-          self->overlay = gst_compositor_overlay_ayuv64;
-          self->fill_checker = gst_compositor_fill_checker_ayuv64;
-          self->fill_color = gst_compositor_fill_color_ayuv64;
-          break;
-        case GST_VIDEO_FORMAT_ARGB:
-          self->blend = gst_compositor_blend_argb;
-          self->overlay = gst_compositor_overlay_argb;
-          self->fill_checker = gst_compositor_fill_checker_argb;
-          self->fill_color = gst_compositor_fill_color_argb;
-          break;
-        case GST_VIDEO_FORMAT_ARGB64:
-          self->blend = gst_compositor_blend_argb64;
-          self->overlay = gst_compositor_overlay_argb64;
-          self->fill_checker = gst_compositor_fill_checker_argb64;
-          self->fill_color = gst_compositor_fill_color_argb64;
-          break;
-        default:
-          GST_ERROR_OBJECT (self, "Unhandled format %s -> %s",
-              gst_video_format_to_string (GST_VIDEO_INFO_FORMAT (info)),
-              gst_video_format_to_string (format));
-          return FALSE;
-      }
+  //     switch (format) {
+  //       case GST_VIDEO_FORMAT_AYUV:
+  //         self->blend = gst_compositor_blend_ayuv;
+  //         self->overlay = gst_compositor_overlay_ayuv;
+  //         self->fill_checker = gst_compositor_fill_checker_ayuv;
+  //         self->fill_color = gst_compositor_fill_color_ayuv;
+  //         break;
+  //       case GST_VIDEO_FORMAT_AYUV64:
+  //         self->blend = gst_compositor_blend_ayuv64;
+  //         self->overlay = gst_compositor_overlay_ayuv64;
+  //         self->fill_checker = gst_compositor_fill_checker_ayuv64;
+  //         self->fill_color = gst_compositor_fill_color_ayuv64;
+  //         break;
+  //       case GST_VIDEO_FORMAT_ARGB:
+  //         self->blend = gst_compositor_blend_argb;
+  //         self->overlay = gst_compositor_overlay_argb;
+  //         self->fill_checker = gst_compositor_fill_checker_argb;
+  //         self->fill_color = gst_compositor_fill_color_argb;
+  //         break;
+  //       case GST_VIDEO_FORMAT_ARGB64:
+  //         self->blend = gst_compositor_blend_argb64;
+  //         self->overlay = gst_compositor_overlay_argb64;
+  //         self->fill_checker = gst_compositor_fill_checker_argb64;
+  //         self->fill_color = gst_compositor_fill_color_argb64;
+  //         break;
+  //       default:
+  //         GST_ERROR_OBJECT (self, "Unhandled format %s -> %s",
+  //             gst_video_format_to_string (GST_VIDEO_INFO_FORMAT (info)),
+  //             gst_video_format_to_string (format));
+  //         return FALSE;
+  //     }
 
-      GST_DEBUG_OBJECT (self,
-          "Configured intermediate format %s for output format %s",
-          gst_video_format_to_string (format),
-          gst_video_format_to_string (GST_VIDEO_INFO_FORMAT (info)));
+  //     GST_DEBUG_OBJECT (self,
+  //         "Configured intermediate format %s for output format %s",
+  //         gst_video_format_to_string (format),
+  //         gst_video_format_to_string (GST_VIDEO_INFO_FORMAT (info)));
 
-      /* needs intermediate conversion */
-      gst_video_info_set_interlaced_format (intermediate_info,
-          format, info->interlace_mode, info->width, info->height);
-      intermediate_info->par_n = info->par_n;
-      intermediate_info->par_d = info->par_d;
-      intermediate_info->fps_n = info->fps_n;
-      intermediate_info->fps_d = info->fps_d;
-      intermediate_info->flags = info->flags;
+  //     /* needs intermediate conversion */
+  //     gst_video_info_set_interlaced_format (intermediate_info,
+  //         format, info->interlace_mode, info->width, info->height);
+  //     intermediate_info->par_n = info->par_n;
+  //     intermediate_info->par_d = info->par_d;
+  //     intermediate_info->fps_n = info->fps_n;
+  //     intermediate_info->fps_d = info->fps_d;
+  //     intermediate_info->flags = info->flags;
 
-      /* preserve colorimetry if required */
-      if (!GST_VIDEO_INFO_IS_GRAY (info))
-        intermediate_info->colorimetry = info->colorimetry;
+  //     /* preserve colorimetry if required */
+  //     if (!GST_VIDEO_INFO_IS_GRAY (info))
+  //       intermediate_info->colorimetry = info->colorimetry;
 
-      self->intermediate_frame =
-          gst_buffer_new_and_alloc (self->intermediate_info.size);
-      break;
-    }
-  }
+  //     self->intermediate_frame =
+  //         gst_buffer_new_and_alloc (self->intermediate_info.size);
+  //     break;
+  //   }
+  // }
 
   /* calculate black and white colors */
   gst_video_color_range_offsets (self->intermediate_info.colorimetry.range,
@@ -1184,7 +1184,7 @@ _fixate_caps (GstAggregator * agg, GstCaps * caps)
 
   GST_OBJECT_LOCK (vagg);
   for (l = GST_ELEMENT (vagg)->sinkpads; l; l = l->next) {
-    GstVideoAggregatorPad *vaggpad = l->data;
+    GstVideoAggregatorPad *vaggpad = (GstVideoAggregatorPad*)l->data;
     GstCompositorPad *compositor_pad = GST_COMPOSITOR_PAD (vaggpad);
     gint this_width, this_height;
     gint width, height;
@@ -1246,7 +1246,7 @@ _fixate_caps (GstAggregator * agg, GstCaps * caps)
 static void
 gst_parallelized_task_thread_func (gpointer data)
 {
-  GstParallelizedTaskRunner *runner = data;
+  GstParallelizedTaskRunner *runner = (GstParallelizedTaskRunner*)data;
   gint idx;
 
   g_mutex_lock (&runner->lock);
@@ -1518,7 +1518,7 @@ _should_draw_background (GstVideoAggregator * vagg)
             (l->data)) == NULL)
       continue;
 
-    if (_pad_obscures_rectangle (vagg, l->data, bg_rect)) {
+    if (_pad_obscures_rectangle (vagg, (GstVideoAggregatorPad*)l->data, bg_rect)) {
       draw = FALSE;
       break;
     }
@@ -1640,211 +1640,81 @@ blend_pads (struct CompositeTask *comp)
 }
 #else
 
-static gboolean
-_get_rga_info_from_video_frame(rga_info_t *info,
-                               GstVideoFrame *frame,
-                               GstMapInfo *mapinfo,
-                               GstMapFlags mapflags)
+gboolean
+_rga_process_composite(rga_buffer_t *src_buf,
+                       rga_buffer_t *dst_buf,
+                       CompositePadInfo *padinfo)
 {
-  /*Debug*/GST_DEBUG("hello");
-  RgaSURF_FORMAT rga_fmt =
-          get_rga_format_from_video_format(GST_VIDEO_FRAME_FORMAT(frame));
-
-  guint width = GST_VIDEO_FRAME_WIDTH(frame);
-  guint height = GST_VIDEO_FRAME_HEIGHT(frame);
-  guint hstride = GST_VIDEO_FRAME_PLANE_STRIDE(frame, 0);
-  guint vstride = GST_VIDEO_FRAME_N_PLANES(frame) == 1
-          ? GST_VIDEO_INFO_HEIGHT(&frame->info)
-          : GST_VIDEO_INFO_PLANE_OFFSET(&frame->info, 1) / hstride;
-
-  if (!set_rga_info_with_video_info(info,
-          rga_fmt, 0, 0, width, height, hstride, vstride)) {
-    return FALSE;
-  }
-
-  GstBuffer *buf = frame->buffer;
-  if (gst_buffer_n_memory(buf) == 1) {
-    GstMemory *mem = gst_buffer_peek_memory(buf, 0);
-    gsize offset;
-
-    if (gst_is_dmabuf_memory(mem)) {
-      gst_memory_get_sizes(mem, &offset, NULL);
-      if (!offset) {
-        info->fd = gst_dmabuf_memory_get_fd(mem);
-      }
-    }
-  }
-  if (info->fd <= 0) {
-    gst_buffer_map(buf, mapinfo, mapflags);
-    info->virAddr = mapinfo->data;
-  }
-  return TRUE;
-}
-
-static gboolean
-_get_rga_info_from_pad_info(rga_info_t *info,
-                            CompositePadInfo *padinfo,
-                            GstVideoFrame *outframe,
-                            GstMapInfo *mapinfo,
-                            GstMapFlags mapflags)
-{
-  rga_info_t src_info = {0};
-  rga_info_t dst_info = {0};
-  GstVideoFrame *frame = padinfo->prepared_frame;
-  GstMemory *mem = NULL;
-  int ret = -1;
-
-  // src rga info
-  mem = gst_buffer_peek_memory(frame->buffer, 0);
-  if (gst_is_dmabuf_memory(mem)) { // is dma-buf memory
-    src_info.fd = gst_dmabuf_memory_get_fd(mem);
-    src_info.virAddr = NULL;
-    src_info.mmuFlag = 0;
-  } else { // use virtual address memory
-    src_info.fd = -1;
-    src_info.virAddr = GST_VIDEO_FRAME_PLANE_DATA(frame, 0);
-    src_info.mmuFlag = 1;
-  }
-
-  src_info.format = get_rga_format_from_video_format(
-          GST_VIDEO_FRAME_FORMAT(frame));
-  if (src_info.format == RK_FORMAT_UNKNOWN) {
-    GST_ERROR("Unknown format");
-    return FALSE;
-  }
-
-  src_info.rect.xoffset = 0;
-  src_info.rect.yoffset = 0;
-  src_info.rect.width = GST_VIDEO_FRAME_WIDTH(frame);
-  src_info.rect.height = GST_VIDEO_FRAME_HEIGHT(frame);
-  src_info.rect.wstride = GST_VIDEO_FRAME_PLANE_STRIDE(frame, 0);
-  src_info.rect.hstride = GST_VIDEO_FRAME_N_PLANES(frame) == 1
-          ? GST_VIDEO_INFO_HEIGHT(&frame->info)
-          : GST_VIDEO_INFO_PLANE_OFFSET(&frame->info, 1)/src_info.rect.wstride;
-
-  // dst rga info
-  mem = gst_buffer_peek_memory(outframe->buffer, 0);
-  if (gst_is_dmabuf_memory(mem)) {
-    dst_info.fd = gst_dmabuf_memory_get_fd(mem);
-    dst_info.virAddr = NULL;
-    dst_info.mmuFlag = 0;
-  } else {
-    dst_info.fd = -1;
-    dst_info.virAddr = GST_VIDEO_FRAME_PLANE_DATA(outframe, 0);
-    dst_info.mmuFlag = 1;
-  }
-
-  dst_info.format = get_rga_format_from_video_format(
-          GST_VIDEO_FRAME_FORMAT(outframe));
-  if (dst_info.format == RK_FORMAT_UNKNOWN) {
-    GST_ERROR("Unknown format");
-    return FALSE;
-  }
-
   GstCompositorPad *pad = padinfo->pad;
-
-  dst_info.rect.xoffset = pad->xpos;
-  dst_info.rect.yoffset = pad->ypos;
+  im_rect drect;
+  int ret, usage;
 
   // if pad width/height = 0, use input frame width/height
-  gint disp_w = (pad->width > 0) ? pad->width : src_info.rect.width;
-  gint disp_h = (pad->height > 0) ? pad->height : src_info.rect.height;
+  gint disp_w = (pad->width > 0) ? pad->width : src_buf->width;
+  gint disp_h = (pad->height > 0) ? pad->height : src_buf->height;
 
-  dst_info.rect.width = disp_w;
-  dst_info.rect.height = disp_h;
-  dst_info.rect.wstride = GST_VIDEO_FRAME_PLANE_STRIDE(outframe, 0);
-  dst_info.rect.hstride = GST_VIDEO_FRAME_N_PLANES(outframe) == 1
-          ? GST_VIDEO_INFO_HEIGHT(&outframe->info)
-          : GST_VIDEO_INFO_PLANE_OFFSET(&outframe->info, 1)/dst_info.rect.wstride;
+  drect.x = pad->xpos;
+  drect.y = pad->ypos;
+  drect.width = disp_w;
+  drect.height = disp_h;
 
-  dst_info.blend = 0xff0405; // src over dst
+  usage = IM_SYNC | IM_ALPHA_BLEND_SRC_OVER | IM_ALPHA_BLEND_PRE_MUL;
 
-  if (pad->alpha < 1.0) {
-    // TODO
+  ret = imcheck_composite(*src_buf, *dst_buf, {}, {}, drect, {}, usage);
+  if (IM_STATUS_NOERROR != ret) {
+    GST_ERROR("imcheck_composite error: %s", imStrError((IM_STATUS)ret));
+    return FALSE;
   }
 
-  ret = c_RkRgaBlit(&src_info, &dst_info, NULL);
-  if (ret != 0) {
-    GST_ERROR("RGA Blit failed. Error: %d. "
-            "SrcRect: %dx%d@%d (stride:%d) -> DstRect: (%d,%d) %dx%d",
-            ret,
-            src_info.rect.width, src_info.rect.height,
-            src_info.format, src_info.rect.wstride,
-            dst_info.rect.xoffset, dst_info.rect.yoffset,
-            dst_info.rect.width, dst_info.rect.height);
+  ret = improcess(*src_buf, *dst_buf, {}, {}, drect, {}, usage);
+  if (IM_STATUS_SUCCESS != ret) {
+    GST_ERROR("improcess failed, %s", imStrError((IM_STATUS)ret));
+    return FALSE;
   }
   return TRUE;
-}
-
-static GstFlowReturn
-blend_pads (struct CompositeTask *comp)
-{
-  rga_info_t *src_info, *dst_info;
-  GstMapInfo *src_map, *dst_map;
-  int ret;
-
-  src_info = g_newa (rga_info_t, comp->n_pads);
-  dst_info = g_newa (rga_info_t, 1);
-
-  src_map = g_newa (GstMapInfo, comp->n_pads);
-  dst_map = g_newa (GstMapInfo, 1);
-
-  for (int i = 0; i < comp->n_pads; ++i) {
-    if (!_get_rga_info_from_pad_info(&src_info[i], comp->out_frame,
-            &comp->pads_info[i], &src_map[i], GST_MAP_READ))
-      return GST_FLOW_ERROR;
-  }
-  if (!_get_rga_info_from_video_frame(&dst_info,
-          comp->out_frame, &dst_map, GST_MAP_WRITE))
-    return GST_FLOW_ERROR;
-
-  // ret = c_RkRgaBlit(&);
-
-  for (int i = 0; i < comp->n_pads; ++i) {
-    gst_buffer_unmap(comp->pads_info[i].prepared_frame->buffer, &src_map[i]);
-  }
-  gst_buffer_unmap(comp->out_frame->buffer, &dst_map);
-
-  if (ret < 0) {
-    GST_WARNING_OBJECT(comp->compositor, "rga_blend_pads error");
-    return GST_FLOW_ERROR;
-  }
-  return GST_FLOW_OK;
 }
 #endif
 
 static GstFlowReturn
 gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
 {
-  /*Debug*/GST_DEBUG("test");
   GstCompositor *compositor = GST_COMPOSITOR (vagg);
   GList *l;
-  GstVideoFrame out_frame, intermediate_frame, *outframe;
+  // GstVideoFrame out_frame, intermediate_frame, *outframe;
   gboolean draw_background;
   guint drawn_a_pad = FALSE;
   struct CompositePadInfo *pads_info;
   guint i, n_pads = 0;
 
-  // 映射输出帧缓冲区
-  if (!gst_video_frame_map (&out_frame, &vagg->info, outbuf, GST_MAP_WRITE)) {
-    GST_WARNING_OBJECT (vagg, "Could not map output buffer");
+  RkrgaContext dst_ctx;
+  std::vector<RkrgaContext> src_ctx;
+
+  // TODO: gst_video_frame_map make outbuf not writable
+  // if (!gst_video_frame_map (&out_frame, &vagg->info, outbuf, GST_MAP_WRITE)) {
+  //   GST_WARNING_OBJECT (vagg, "Could not map output buffer");
+  //   return GST_FLOW_ERROR;
+  // }
+
+  // outframe = &out_frame;
+
+  // 转换视频帧 到 rga buffer
+  if (!dst_ctx.wrap(outbuf, &vagg->info, GST_MAP_WRITE)) {
+    GST_WARNING_OBJECT(compositor, "Could not wrap rga buffer");
     return GST_FLOW_ERROR;
   }
 
-  outframe = &out_frame;
-
   // 映射转换帧缓冲区
-  if (compositor->intermediate_frame) {
-    if (!gst_video_frame_map (&intermediate_frame,
-            &compositor->intermediate_info, compositor->intermediate_frame,
-            GST_MAP_READWRITE)) {
-      GST_WARNING_OBJECT (vagg, "Could not map intermediate buffer");
-      gst_video_frame_unmap (&out_frame);
-      return GST_FLOW_ERROR;
-    }
+  // if (compositor->intermediate_frame) {
+  //   if (!gst_video_frame_map (&intermediate_frame,
+  //           &compositor->intermediate_info, compositor->intermediate_frame,
+  //           GST_MAP_READWRITE)) {
+  //     GST_WARNING_OBJECT (vagg, "Could not map intermediate buffer");
+  //     gst_video_frame_unmap (&out_frame);
+  //     return GST_FLOW_ERROR;
+  //   }
 
-    outframe = &intermediate_frame;
-  }
+  //   outframe = &intermediate_frame;
+  // }
 
   /* If one of the frames to be composited completely obscures the background,
    * don't bother drawing the background at all. We can also always use the
@@ -1856,7 +1726,7 @@ gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
   GST_OBJECT_LOCK (vagg);
   // 遍历sinkpads，计数可读视频帧
   for (l = GST_ELEMENT (vagg)->sinkpads; l; l = l->next) {
-    GstVideoAggregatorPad *pad = l->data;
+    GstVideoAggregatorPad *pad = (GstVideoAggregatorPad*)l->data;
     GstVideoFrame *prepared_frame =
         gst_video_aggregator_pad_get_prepared_frame (pad);
 
@@ -1870,24 +1740,25 @@ gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
     draw_background = TRUE;
 
   // 根据上面的可读视频帧数分配栈内存
-  pads_info = g_newa (struct CompositePadInfo, n_pads);
+  pads_info = g_newa (CompositePadInfo, n_pads);
+  src_ctx = std::vector<RkrgaContext>(n_pads);
   n_pads = 0;
 
   for (l = GST_ELEMENT (vagg)->sinkpads; l; l = l->next) {
-    GstVideoAggregatorPad *pad = l->data;
+    GstVideoAggregatorPad *pad = (GstVideoAggregatorPad*)l->data;
     GstCompositorPad *compo_pad = GST_COMPOSITOR_PAD (pad);
     GstVideoFrame *prepared_frame =
         gst_video_aggregator_pad_get_prepared_frame (pad);
     GstCompositorBlendMode blend_mode = COMPOSITOR_BLEND_MODE_OVER;
 
     switch (compo_pad->op) {
-      case COMPOSITOR_OPERATOR_SOURCE: // ？
+      case COMPOSITOR_OPERATOR_SOURCE:
         blend_mode = COMPOSITOR_BLEND_MODE_SOURCE;
         break;
-      case COMPOSITOR_OPERATOR_OVER: // 覆盖
+      case COMPOSITOR_OPERATOR_OVER:
         blend_mode = COMPOSITOR_BLEND_MODE_OVER;
         break;
-      case COMPOSITOR_OPERATOR_ADD: // 叠加？
+      case COMPOSITOR_OPERATOR_ADD:
         blend_mode = COMPOSITOR_BLEND_MODE_ADD;
         break;
       default:
@@ -1900,13 +1771,23 @@ gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
        * background, and @prepared_frame has the same format, height, and width
        * as @outframe, then we can just copy it as-is. Subsequent pads (if any)
        * will be composited on top of it. */
-      if (!drawn_a_pad && !draw_background &&
+      /*if (!drawn_a_pad && !draw_background &&
           frames_can_copy (prepared_frame, outframe)) {
         gst_video_frame_copy (outframe, prepared_frame);
-      } else {
+      } else */{
         pads_info[n_pads].pad = compo_pad;
         pads_info[n_pads].prepared_frame = prepared_frame;
         pads_info[n_pads].blend_mode = blend_mode;
+
+        if (!src_ctx[n_pads].wrap(prepared_frame, GST_MAP_READ)) {
+          GST_ERROR("rgacompositor wrap rga buffer failed");
+          // continue;
+        }
+
+        if (!_rga_process_composite(&src_ctx[n_pads].rgabuf_,
+                &dst_ctx.rgabuf_, &pads_info[n_pads])) {
+          GST_DEBUG("error!!!");
+        }
         n_pads++;
       }
       drawn_a_pad = TRUE;
@@ -1948,31 +1829,31 @@ gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
         (GstParallelizedTaskFunc) blend_pads, (gpointer *) tasks_p);
   }
 #else
-  {
-    struct CompositeTask *task;
+  // if (n_pads > 0) {
+  //   struct CompositeTask *task;
 
-    task = g_newa (struct CompositeTask, 1);
-    task->compositor = compositor;
-    task->n_pads = n_pads;
-    task->pads_info = pads_info;
-    task->draw_background = draw_background;
+  //   task = g_newa (struct CompositeTask, 1);
+  //   task->compositor = compositor;
+  //   task->n_pads = n_pads;
+  //   task->pads_info = pads_info;
+  //   task->draw_background = draw_background;
 
-    if (GST_FLOW_ERROR == blend_pads(task)) {
-      return GST_FLOW_ERROR;
-    }
-  }
+  //   if (GST_FLOW_ERROR == blend_pads(task)) {
+  //     return GST_FLOW_ERROR;
+  //   }
+  // }
 #endif
 
   GST_OBJECT_UNLOCK (vagg);
 
-  if (compositor->intermediate_frame) {
-    gst_video_converter_frame (compositor->intermediate_convert,
-        &intermediate_frame, &out_frame);
+  // if (compositor->intermediate_frame) {
+  //   gst_video_converter_frame (compositor->intermediate_convert,
+  //       &intermediate_frame, &out_frame);
 
-    gst_video_frame_unmap (&intermediate_frame);
-  }
+  //   gst_video_frame_unmap (&intermediate_frame);
+  // }
 
-  gst_video_frame_unmap (&out_frame);
+  // gst_video_frame_unmap (&out_frame);
 
   return GST_FLOW_OK;
 }
@@ -2145,7 +2026,7 @@ gst_compositor_finalize (GObject * object)
   compositor->blend_runner = NULL;
 #endif
 
-  gst_compositor_deinit_rkrga();
+  rga_compositor_deinit_rkrga();
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
@@ -2179,7 +2060,7 @@ gst_compositor_class_init (GstCompositorClass * klass)
   g_object_class_install_property (gobject_class, PROP_BACKGROUND,
       g_param_spec_enum ("background", "Background", "Background type",
           GST_TYPE_COMPOSITOR_BACKGROUND,
-          DEFAULT_BACKGROUND, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          DEFAULT_BACKGROUND, (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   /**
    * compositor:zero-size-is-unscaled:
@@ -2195,7 +2076,7 @@ gst_compositor_class_init (GstCompositorClass * klass)
           "If TRUE, then input video is unscaled in that dimension "
           "if width or height is 0 (for backwards compatibility)",
           DEFAULT_ZERO_SIZE_IS_UNSCALED,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   /**
    * compositor:max-threads:
@@ -2208,8 +2089,8 @@ gst_compositor_class_init (GstCompositorClass * klass)
       g_param_spec_uint ("max-threads", "Max Threads",
           "Maximum number of blending/rendering worker threads to spawn "
           "(0 = auto)", 0, G_MAXINT, DEFAULT_MAX_THREADS,
-          GST_PARAM_MUTABLE_READY | G_PARAM_READWRITE |
-          G_PARAM_STATIC_STRINGS));
+          (GParamFlags)(GST_PARAM_MUTABLE_READY | G_PARAM_READWRITE |
+          G_PARAM_STATIC_STRINGS)));
 
   gst_element_class_add_static_pad_template_with_gtype (gstelement_class,
       &src_factory, GST_TYPE_AGGREGATOR_PAD);
@@ -2239,11 +2120,11 @@ gst_compositor_class_init (GstCompositorClass * klass)
       PROP_IGNORE_INACTIVE_PADS, g_param_spec_boolean ("ignore-inactive-pads",
           "Ignore inactive pads",
           "Avoid timing out waiting for inactive pads", FALSE,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
-  gst_type_mark_as_plugin_api (GST_TYPE_COMPOSITOR_PAD, 0);
-  gst_type_mark_as_plugin_api (GST_TYPE_COMPOSITOR_OPERATOR, 0);
-  gst_type_mark_as_plugin_api (GST_TYPE_COMPOSITOR_BACKGROUND, 0);
+  gst_type_mark_as_plugin_api (GST_TYPE_COMPOSITOR_PAD, (GstPluginAPIFlags)0);
+  gst_type_mark_as_plugin_api (GST_TYPE_COMPOSITOR_OPERATOR, (GstPluginAPIFlags)0);
+  gst_type_mark_as_plugin_api (GST_TYPE_COMPOSITOR_BACKGROUND, (GstPluginAPIFlags)0);
 }
 
 static void
@@ -2255,7 +2136,7 @@ gst_compositor_init (GstCompositor * self)
   self->zero_size_is_unscaled = DEFAULT_ZERO_SIZE_IS_UNSCALED;
   self->max_threads = DEFAULT_MAX_THREADS;
 
-  gst_compositor_init_rkrga();
+  rga_compositor_init_rkrga();
 }
 
 /* GstChildProxy implementation */
@@ -2267,7 +2148,7 @@ gst_compositor_child_proxy_get_child_by_index (GstChildProxy * child_proxy,
   GObject *obj = NULL;
 
   GST_OBJECT_LOCK (compositor);
-  obj = g_list_nth_data (GST_ELEMENT_CAST (compositor)->sinkpads, index);
+  obj = (GObject*)g_list_nth_data (GST_ELEMENT_CAST (compositor)->sinkpads, index);
   if (obj)
     gst_object_ref (obj);
   GST_OBJECT_UNLOCK (compositor);
@@ -2292,7 +2173,7 @@ gst_compositor_child_proxy_get_children_count (GstChildProxy * child_proxy)
 static void
 gst_compositor_child_proxy_init (gpointer g_iface, gpointer iface_data)
 {
-  GstChildProxyInterface *iface = g_iface;
+  GstChildProxyInterface *iface = (GstChildProxyInterface*)g_iface;
 
   iface->get_child_by_index = gst_compositor_child_proxy_get_child_by_index;
   iface->get_children_count = gst_compositor_child_proxy_get_children_count;

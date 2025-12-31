@@ -25,6 +25,7 @@
 #include <gst/video/video.h>
 #include <gst/video/gstvideoaggregator.h>
 #include <gst/base/base.h>
+#include <gst/allocators/gstdmabuf.h>
 
 #include "blend.h"
 #include "rkrga.h"

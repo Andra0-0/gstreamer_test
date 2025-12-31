@@ -23,6 +23,8 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 
+G_BEGIN_DECLS
+
 /**
  * GstCompositorBlendMode:
  * @COMPOSITOR_BLEND_MODE_SOURCE: Copy source
@@ -181,5 +183,7 @@ extern FillColorFunction gst_compositor_fill_color_argb64;
 #define gst_compositor_fill_color_ayuv64 gst_compositor_fill_color_argb64;
 
 void gst_compositor_init_blend (void);
+
+G_END_DECLS
 
 #endif /* __BLEND_H__ */

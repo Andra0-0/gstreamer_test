@@ -36,8 +36,8 @@ set(
 set(
   RGA_COMPOSITOR_SOURCES
   blend.c
-  rkrga.c
-  compositor.c
+  rkrga.cpp
+  compositor.cpp
   compositororc-dist.c
 )
 

@@ -4,33 +4,34 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <rga/RgaApi.h>
+#include <rga/im2d_type.h>
+#include <rga/im2d_common.h>
+#include <rga/im2d_buffer.h>
+#include <rga/im2d_single.h>
+
+#include <vector>
 
 void
-gst_compositor_init_rkrga(void);
+rga_compositor_init_rkrga(void);
 
 void
-gst_compositor_deinit_rkrga(void);
+rga_compositor_deinit_rkrga(void);
 
-RgaSURF_FORMAT
-get_rga_format_from_video_format(GstVideoFormat format);
+struct RkrgaContext {
+public:
+  rga_buffer_handle_t handle_;
+  rga_buffer_t        rgabuf_;
+  GstMapInfo          mapinfo_;
+  GstMapFlags         mapflag_;
+  GstBuffer*          buffer_;
 
-gint
-get_pixel_stride_from_rga_format(RgaSURF_FORMAT format);
+public:
+  RkrgaContext();
+  ~RkrgaContext();
 
-gboolean
-set_rga_info_with_video_info(rga_info_t *info,
-                             RgaSURF_FORMAT format,
-                             guint xpos,
-                             guint ypos,
-                             guint width,
-                             guint height,
-                             guint hstride,
-                             guint vstride);
-
-// gboolean
-// get_rga_info_from_video_frame(rga_info_t *info,
-//                               GstVideoFrame *frame,
-//                               GstMapInfo *mapinfo,
-//                               GstMapFlags mapflags);
+  // bool wrap(GstBuffer *gstbuf, GstMapFlags flag);
+  bool wrap(GstVideoFrame *frame, GstMapFlags flag);
+  bool wrap(GstBuffer *buffer, GstVideoInfo *info, GstMapFlags flag);
+};
 
 #endif // __RK_RGA_H__

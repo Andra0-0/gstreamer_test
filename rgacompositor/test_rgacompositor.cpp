@@ -18,9 +18,9 @@ struct PipelineData {
     GstElement *source3;
     
     // 对应的转换器和缩放器
-    GstElement *convert1, *scale1;
-    GstElement *convert2, *scale2;
-    GstElement *convert3, *scale3;
+    GstElement *convert1, *scale1, *capsf1;
+    GstElement *convert2, *scale2, *capsf2;
+    GstElement *convert3, *scale3, *capsf3;
     
     GMainLoop *loop;
 };
@@ -32,7 +32,7 @@ static void configure_compositor_pad(GstElement *compositor,
                                      gint width, gint height) {
     GstPad *pad = gst_element_get_static_pad(compositor, pad_name);
     if (!pad) {
-        g_printerr("无法获取pad: %s\n", pad_name);
+        printf("无法获取pad: %s\n", pad_name);
         return;
     }
     
@@ -63,7 +63,7 @@ static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
             gst_message_parse_error(msg, &error, &debug);
             g_free(debug);
             
-            g_printerr("错误: %s\n", error->message);
+            printf("错误: %s\n", error->message);
             g_error_free(error);
             
             g_main_loop_quit(pdata->loop);
@@ -82,7 +82,8 @@ static PipelineData* create_pipeline() {
     PipelineData *pdata = new PipelineData();
 
     // 设置GStreamer日志打印
-    g_setenv("GST_DEBUG","1,rgacompositor:5,rgacompositor_rkrga:5", TRUE);
+    // g_setenv("GST_DEBUG","1,rgacompositor:5,rgacompositor_rkrga:5", TRUE);
+    g_setenv("GST_DEBUG","1", TRUE);
     
     // 初始化GStreamer
     gst_init(NULL, NULL);
@@ -92,6 +93,9 @@ static PipelineData* create_pipeline() {
     
     // 创建compositor元素
     pdata->compositor = gst_element_factory_make("rgacompositor", "rgacompositor");
+    if (!pdata->compositor) {
+        printf("Error to create rgacompositor\n");
+    }
     
     // 创建视频输出
     pdata->video_sink = gst_element_factory_make("autovideosink", "video-sink");
@@ -100,21 +104,24 @@ static PipelineData* create_pipeline() {
     pdata->source1 = gst_element_factory_make("videotestsrc", "source1");
     pdata->convert1 = gst_element_factory_make("videoconvert", "convert1");
     pdata->scale1 = gst_element_factory_make("videoscale", "scale1");
+    pdata->capsf1 = gst_element_factory_make("capsfilter", "capsf1");
     
     pdata->source2 = gst_element_factory_make("videotestsrc", "source2");
     pdata->convert2 = gst_element_factory_make("videoconvert", "convert2");
     pdata->scale2 = gst_element_factory_make("videoscale", "scale2");
+    pdata->capsf2 = gst_element_factory_make("capsfilter", "capsf2");
     
     pdata->source3 = gst_element_factory_make("videotestsrc", "source3");
     pdata->convert3 = gst_element_factory_make("videoconvert", "convert3");
     pdata->scale3 = gst_element_factory_make("videoscale", "scale3");
+    pdata->capsf3 = gst_element_factory_make("capsfilter", "capsf3");
     
     // 检查所有元素是否创建成功
     if (!pdata->pipeline || !pdata->compositor || !pdata->video_sink ||
-        !pdata->source1 || !pdata->convert1 || !pdata->scale1 ||
-        !pdata->source2 || !pdata->convert2 || !pdata->scale2 ||
-        !pdata->source3 || !pdata->convert3 || !pdata->scale3) {
-        g_printerr("无法创建所有GStreamer元素\n");
+        !pdata->source1 || !pdata->convert1 || !pdata->scale1 || !pdata->capsf1 ||
+        !pdata->source2 || !pdata->convert2 || !pdata->scale2 || !pdata->capsf2 ||
+        !pdata->source3 || !pdata->convert3 || !pdata->scale3 || !pdata->capsf3) {
+        printf("无法创建所有GStreamer元素\n");
         delete pdata;
         return nullptr;
     }
@@ -122,32 +129,45 @@ static PipelineData* create_pipeline() {
     // 设置视频源属性
     g_object_set(pdata->source1, "pattern", 0, NULL);  // 雪碧
     g_object_set(pdata->source2, "pattern", 1, NULL);  // 白噪声
-    g_object_set(pdata->source3, "pattern", 2, NULL);  // 黑
+    g_object_set(pdata->source3, "pattern", 18, NULL); // 小球
+
+    GstCaps *caps;
+    caps = gst_caps_new_simple("video/x-raw",
+            "format", G_TYPE_STRING, "RGBA",
+            NULL);
+    if (caps) {
+      g_object_set(G_OBJECT(pdata->capsf1), "caps", caps, NULL);
+      g_object_set(G_OBJECT(pdata->capsf2), "caps", caps, NULL);
+      g_object_set(G_OBJECT(pdata->capsf3), "caps", caps, NULL);
+      gst_caps_unref(caps);
+    } else {
+      printf("Failed to create caps for capsfilter\n");
+    }
     
     // 将元素添加到pipeline
     gst_bin_add_many(GST_BIN(pdata->pipeline),
-                     pdata->source1, pdata->convert1, pdata->scale1,
-                     pdata->source2, pdata->convert2, pdata->scale2,
-                     pdata->source3, pdata->convert3, pdata->scale3,
+                     pdata->source1, pdata->convert1, pdata->scale1, pdata->capsf1,
+                     pdata->source2, pdata->convert2, pdata->scale2, pdata->capsf2,
+                     pdata->source3, pdata->convert3, pdata->scale3, pdata->capsf3,
                      pdata->compositor, pdata->video_sink, NULL);
     
     // 链接第一个视频源链
-    if (!gst_element_link_many(pdata->source1, pdata->convert1, pdata->scale1, NULL)) {
-        g_printerr("无法链接source1\n");
+    if (!gst_element_link_many(pdata->source1, pdata->convert1, pdata->scale1, pdata->capsf1, NULL)) {
+        printf("无法链接source1\n");
         delete pdata;
         return nullptr;
     }
     
     // 链接第二个视频源链
-    if (!gst_element_link_many(pdata->source2, pdata->convert2, pdata->scale2, NULL)) {
-        g_printerr("无法链接source2\n");
+    if (!gst_element_link_many(pdata->source2, pdata->convert2, pdata->scale2, pdata->capsf2, NULL)) {
+        printf("无法链接source2\n");
         delete pdata;
         return nullptr;
     }
     
     // 链接第三个视频源链
-    if (!gst_element_link_many(pdata->source3, pdata->convert3, pdata->scale3, NULL)) {
-        g_printerr("无法链接source3\n");
+    if (!gst_element_link_many(pdata->source3, pdata->convert3, pdata->scale3, pdata->capsf3, NULL)) {
+        printf("无法链接source3\n");
         delete pdata;
         return nullptr;
     }
@@ -155,16 +175,16 @@ static PipelineData* create_pipeline() {
     // 将三个视频源链接到compositor
     // 需要获取compositor的sink pad进行链接
     GstPad *sinkpad1 = gst_element_get_request_pad(pdata->compositor, "sink_%u");
-    GstPad *srcpad1 = gst_element_get_static_pad(pdata->scale1, "src");
+    GstPad *srcpad1 = gst_element_get_static_pad(pdata->capsf1, "src");
     
     GstPad *sinkpad2 = gst_element_get_request_pad(pdata->compositor, "sink_%u");
-    GstPad *srcpad2 = gst_element_get_static_pad(pdata->scale2, "src");
+    GstPad *srcpad2 = gst_element_get_static_pad(pdata->capsf2, "src");
     
     GstPad *sinkpad3 = gst_element_get_request_pad(pdata->compositor, "sink_%u");
-    GstPad *srcpad3 = gst_element_get_static_pad(pdata->scale3, "src");
+    GstPad *srcpad3 = gst_element_get_static_pad(pdata->capsf3, "src");
     
     if (!sinkpad1 || !srcpad1 || !sinkpad2 || !srcpad2 || !sinkpad3 || !srcpad3) {
-        g_printerr("无法获取pad\n");
+        printf("无法获取pad\n");
         delete pdata;
         return nullptr;
     }
@@ -173,7 +193,7 @@ static PipelineData* create_pipeline() {
     if (gst_pad_link(srcpad1, sinkpad1) != GST_PAD_LINK_OK ||
         gst_pad_link(srcpad2, sinkpad2) != GST_PAD_LINK_OK ||
         gst_pad_link(srcpad3, sinkpad3) != GST_PAD_LINK_OK) {
-        g_printerr("无法链接pad\n");
+        printf("无法链接pad\n");
         delete pdata;
         return nullptr;
     }
@@ -184,7 +204,7 @@ static PipelineData* create_pipeline() {
     
     // 链接compositor到视频输出
     if (!gst_element_link(pdata->compositor, pdata->video_sink)) {
-        g_printerr("无法链接compositor到视频输出\n");
+        printf("无法链接compositor到视频输出\n");
         delete pdata;
         return nullptr;
     }
