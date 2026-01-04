@@ -27,18 +27,14 @@ endif()
 
 set(
   RGA_COMPOSITOR_HEADERS
-  blend.h
   rkrga.h
-  compositor.h
-  compositororc-dist.h
+  rgacompositor.h
 )
 
 set(
   RGA_COMPOSITOR_SOURCES
-  blend.c
   rkrga.cpp
-  compositor.cpp
-  compositororc-dist.c
+  rgacompositor.cpp
 )
 
 add_library(gstrgacompositor SHARED

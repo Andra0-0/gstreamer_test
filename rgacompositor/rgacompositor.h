@@ -18,8 +18,8 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef __GST_COMPOSITOR_H__
-#define __GST_COMPOSITOR_H__
+#ifndef __GST_RGA_COMPOSITOR_H__
+#define __GST_RGA_COMPOSITOR_H__
 
 #include <gst/gst.h>
 #include <gst/video/video.h>
@@ -27,20 +27,19 @@
 #include <gst/base/base.h>
 #include <gst/allocators/gstdmabuf.h>
 
-#include "blend.h"
 #include "rkrga.h"
-
-// Disable multi-threads process blend, use rga task
-#define RGA_DISABLE_TASKRUNNER
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_COMPOSITOR (gst_compositor_get_type())
-G_DECLARE_FINAL_TYPE (GstCompositor, gst_compositor, GST, COMPOSITOR,
+/**
+ * copied from compositor.c
+ */
+#define GST_TYPE_COMPOSITOR (gst_rga_compositor_get_type())
+G_DECLARE_FINAL_TYPE (GstRgaCompositor, gst_rga_compositor, GST, RGA_COMPOSITOR,
     GstVideoAggregator)
 
-#define GST_TYPE_COMPOSITOR_PAD (gst_compositor_pad_get_type())
-G_DECLARE_FINAL_TYPE (GstCompositorPad, gst_compositor_pad, GST, COMPOSITOR_PAD,
+#define GST_TYPE_COMPOSITOR_PAD (gst_rga_compositor_pad_get_type())
+G_DECLARE_FINAL_TYPE (GstRgaCompositorPad, gst_rga_compositor_pad, GST, RGA_COMPOSITOR_PAD,
     GstVideoAggregatorParallelConvertPad)
 
 /**
@@ -99,34 +98,12 @@ typedef enum
   COMPOSITOR_SIZING_POLICY_KEEP_ASPECT_RATIO,
 } GstCompositorSizingPolicy;
 
-/* copied from video-converter.c */
-typedef void (*GstParallelizedTaskFunc) (gpointer user_data);
-
-typedef struct _GstParallelizedTaskRunner GstParallelizedTaskRunner;
-
-struct _GstParallelizedTaskRunner
-{
-  GstTaskPool *pool;
-  gboolean own_pool;
-  guint n_threads;
-
-  GstQueueArray *tasks;
-
-  GstParallelizedTaskFunc func;
-  gpointer *task_data;
-
-  GMutex lock;
-  gint n_todo;
-
-  gboolean async_tasks;
-};
-
 /**
- * GstCompositor:
+ * GstRgaCompositor:
  *
- * The opaque #GstCompositor structure.
+ * The opaque #GstRgaCompositor structure.
  */
-struct _GstCompositor
+struct _GstRgaCompositor
 {
   GstVideoAggregator videoaggregator;
   GstCompositorBackground background;
@@ -145,9 +122,9 @@ struct _GstCompositor
   /* The 'blend' compositing function does not preserve the alpha value of the
    * background, while 'overlay' does; i.e., COMPOSITOR_OPERATOR_ADD is the
    * same as COMPOSITOR_OPERATOR_OVER when using the 'blend' BlendFunction. */
-  BlendFunction blend, overlay;
-  FillCheckerFunction fill_checker;
-  FillColorFunction fill_color;
+  // BlendFunction blend, overlay;
+  // FillCheckerFunction fill_checker;
+  // FillColorFunction fill_color;
 
   /* pre-calculated white/black level values, YUV or RGB order depending on
    * selected output format */
@@ -157,10 +134,6 @@ struct _GstCompositor
   GstBuffer *intermediate_frame;
   GstVideoInfo intermediate_info;
   GstVideoConverter *intermediate_convert;
-
-#ifndef RGA_DISABLE_TASKRUNNER
-  GstParallelizedTaskRunner *blend_runner;
-#endif
 };
 
 /**
@@ -168,7 +141,7 @@ struct _GstCompositor
  *
  * The opaque #GstCompositorPad structure.
  */
-struct _GstCompositorPad
+struct _GstRgaCompositorPad
 {
   GstVideoAggregatorParallelConvertPad parent;
 

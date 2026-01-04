@@ -2,8 +2,6 @@
 
 #include <gst/allocators/gstdmabuf.h>
 
-#include "compositor.h"
-
 GST_DEBUG_CATEGORY_STATIC (gst_rgacompositor_rkrga_debug);
 #define GST_CAT_DEFAULT gst_rgacompositor_rkrga_debug
 

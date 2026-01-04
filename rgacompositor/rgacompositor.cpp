@@ -92,28 +92,43 @@
 
 #include <string.h>
 
-#include "compositor.h"
-
-#define DISABLE_ORC // disable orc, use rga
-#ifdef DISABLE_ORC
-#define orc_memset memset
-#else
-#include <orc/orcfunctions.h>
-#endif
+#include "rgacompositor.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_rgacompositor_debug);
 #define GST_CAT_DEFAULT gst_rgacompositor_debug
 
+#define VIDEO_SRC_CAPS                                                         \
+  "video/x-raw, "                                                              \
+  "format = (string) "                                                         \
+  "{ I420, YV12, NV12, NV21, Y42B, NV16, NV61, RGB16, RGB15, BGR, RGB, BGRA, " \
+  "RGBA, BGRx, RGBx }"                                                         \
+  ", "                                                                         \
+  "width = (int) [ 1, 4096 ] ,"                                                \
+  "height = (int) [ 1, 4096 ] ,"                                               \
+  "framerate = (fraction) [ 0, max ]"
+
+#define VIDEO_SINK_CAPS                                                        \
+  "video/x-raw, "                                                              \
+  "format = (string) "                                                         \
+  "{ I420, YV12, NV12, NV21, Y42B, NV16, NV61, RGB16, RGB15, BGR, RGB, BGRA, " \
+  "RGBA, BGRx, RGBx }"                                                         \
+  ", "                                                                         \
+  "width = (int) [ 1, 8192 ] ,"                                                \
+  "height = (int) [ 1, 8192 ] ,"                                               \
+  "framerate = (fraction) [ 0, max ]"
+
 static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS_ALL))
+    GST_STATIC_CAPS (VIDEO_SRC_CAPS)
+    // GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS_ALL)) // TODO
     );
 
 static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE ("sink_%u",
     GST_PAD_SINK,
     GST_PAD_REQUEST,
-    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS_ALL))
+    GST_STATIC_CAPS (VIDEO_SINK_CAPS)
+    // GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS_ALL)) // TODO
     );
 
 static void gst_compositor_child_proxy_init (gpointer g_iface,
@@ -208,14 +223,14 @@ enum
   PROP_PAD_SIZING_POLICY,
 };
 
-G_DEFINE_TYPE (GstCompositorPad, gst_compositor_pad,
+G_DEFINE_TYPE (GstRgaCompositorPad, gst_rga_compositor_pad,
     GST_TYPE_VIDEO_AGGREGATOR_PARALLEL_CONVERT_PAD);
 
 static void
 gst_compositor_pad_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
-  GstCompositorPad *pad = GST_COMPOSITOR_PAD (object);
+  GstRgaCompositorPad *pad = GST_RGA_COMPOSITOR_PAD (object);
 
   switch (prop_id) {
     case PROP_PAD_XPOS:
@@ -249,7 +264,7 @@ static void
 gst_compositor_pad_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
-  GstCompositorPad *pad = GST_COMPOSITOR_PAD (object);
+  GstRgaCompositorPad *pad = GST_RGA_COMPOSITOR_PAD (object);
 
   switch (prop_id) {
     case PROP_PAD_XPOS:
@@ -288,7 +303,8 @@ gst_compositor_pad_set_property (GObject * object, guint prop_id,
 }
 
 static void
-_mixer_pad_get_output_size (GstCompositor * comp, GstCompositorPad * comp_pad,
+_mixer_pad_get_output_size (
+    GstRgaCompositor * comp, GstRgaCompositorPad * comp_pad,
     gint out_par_n, gint out_par_d, gint * width, gint * height,
     gint * x_offset, gint * y_offset)
 {
@@ -466,7 +482,7 @@ _pad_obscures_rectangle (GstVideoAggregator * vagg, GstVideoAggregatorPad * pad,
     const GstVideoRectangle rect)
 {
   GstVideoRectangle pad_rect;
-  GstCompositorPad *cpad = GST_COMPOSITOR_PAD (pad);
+  GstRgaCompositorPad *cpad = GST_RGA_COMPOSITOR_PAD (pad);
   GstStructure *converter_config = NULL;
   gboolean fill_border = TRUE;
   guint32 border_argb = 0xff000000;
@@ -500,7 +516,7 @@ _pad_obscures_rectangle (GstVideoAggregator * vagg, GstVideoAggregatorPad * pad,
   pad_rect.x = cpad->xpos;
   pad_rect.y = cpad->ypos;
   /* Handle pixel and display aspect ratios to find the actual size */
-  _mixer_pad_get_output_size (GST_COMPOSITOR (vagg), cpad,
+  _mixer_pad_get_output_size (GST_RGA_COMPOSITOR (vagg), cpad,
       GST_VIDEO_INFO_PAR_N (&vagg->info), GST_VIDEO_INFO_PAR_D (&vagg->info),
       &(pad_rect.w), &(pad_rect.h), &x_offset, &y_offset);
   pad_rect.x += x_offset;
@@ -521,7 +537,7 @@ gst_compositor_pad_prepare_frame_start (GstVideoAggregatorPad * pad,
     GstVideoAggregator * vagg, GstBuffer * buffer,
     GstVideoFrame * prepared_frame)
 {
-  GstCompositorPad *cpad = GST_COMPOSITOR_PAD (pad);
+  GstRgaCompositorPad *cpad = GST_RGA_COMPOSITOR_PAD (pad);
   gint width, height;
   gboolean frame_obscured = FALSE;
   GList *l;
@@ -541,7 +557,7 @@ gst_compositor_pad_prepare_frame_start (GstVideoAggregatorPad * pad,
    *     width/height. See ->set_info()
    * */
 
-  _mixer_pad_get_output_size (GST_COMPOSITOR (vagg), cpad,
+  _mixer_pad_get_output_size (GST_RGA_COMPOSITOR (vagg), cpad,
       GST_VIDEO_INFO_PAR_N (&vagg->info), GST_VIDEO_INFO_PAR_D (&vagg->info),
       &width, &height, &cpad->x_offset, &cpad->y_offset);
 
@@ -597,21 +613,21 @@ gst_compositor_pad_prepare_frame_start (GstVideoAggregatorPad * pad,
     return;
 
   GST_VIDEO_AGGREGATOR_PAD_CLASS
-      (gst_compositor_pad_parent_class)->prepare_frame_start (pad, vagg, buffer,
-      prepared_frame);
+      (gst_rga_compositor_pad_parent_class)->prepare_frame_start (pad, vagg,
+      buffer, prepared_frame);
 }
 
 static void
 gst_compositor_pad_create_conversion_info (GstVideoAggregatorConvertPad * pad,
     GstVideoAggregator * vagg, GstVideoInfo * conversion_info)
 {
-  GstCompositor *self = GST_COMPOSITOR (vagg);
-  GstCompositorPad *cpad = GST_COMPOSITOR_PAD (pad);
+  GstRgaCompositor *self = GST_RGA_COMPOSITOR (vagg);
+  GstRgaCompositorPad *cpad = GST_RGA_COMPOSITOR_PAD (pad);
   gint width, height;
   gint x_offset, y_offset;
 
   GST_VIDEO_AGGREGATOR_CONVERT_PAD_CLASS
-      (gst_compositor_pad_parent_class)->create_conversion_info (pad, vagg,
+      (gst_rga_compositor_pad_parent_class)->create_conversion_info (pad, vagg,
       conversion_info);
   if (!conversion_info->finfo)
     return;
@@ -664,9 +680,8 @@ gst_compositor_pad_create_conversion_info (GstVideoAggregatorConvertPad * pad,
 }
 
 static void
-gst_compositor_pad_class_init (GstCompositorPadClass * klass)
+gst_rga_compositor_pad_class_init (GstRgaCompositorPadClass * klass)
 {
-  /*Debug*/GST_DEBUG("\e[1;31mDebug\e[0m");
   GObjectClass *gobject_class = (GObjectClass *) klass;
   GstVideoAggregatorPadClass *vaggpadclass =
       (GstVideoAggregatorPadClass *) klass;
@@ -728,9 +743,8 @@ gst_compositor_pad_class_init (GstCompositorPadClass * klass)
 }
 
 static void
-gst_compositor_pad_init (GstCompositorPad * compo_pad)
+gst_rga_compositor_pad_init (GstRgaCompositorPad * compo_pad)
 {
-  /*Debug*/GST_DEBUG("\e[1;31mDebug\e[0m");
   compo_pad->xpos = DEFAULT_PAD_XPOS;
   compo_pad->ypos = DEFAULT_PAD_YPOS;
   compo_pad->alpha = DEFAULT_PAD_ALPHA;
@@ -759,7 +773,7 @@ static void
 gst_compositor_get_property (GObject * object,
     guint prop_id, GValue * value, GParamSpec * pspec)
 {
-  GstCompositor *self = GST_COMPOSITOR (object);
+  GstRgaCompositor *self = GST_RGA_COMPOSITOR (object);
 
   switch (prop_id) {
     case PROP_BACKGROUND:
@@ -785,7 +799,7 @@ static void
 gst_compositor_set_property (GObject * object,
     guint prop_id, const GValue * value, GParamSpec * pspec)
 {
-  GstCompositor *self = GST_COMPOSITOR (object);
+  GstRgaCompositor *self = GST_RGA_COMPOSITOR (object);
 
   switch (prop_id) {
     case PROP_BACKGROUND:
@@ -807,15 +821,15 @@ gst_compositor_set_property (GObject * object,
   }
 }
 
-#define gst_compositor_parent_class parent_class
-G_DEFINE_TYPE_WITH_CODE (GstCompositor, gst_compositor,
+#define gst_rga_compositor_parent_class parent_class
+G_DEFINE_TYPE_WITH_CODE (GstRgaCompositor, gst_rga_compositor,
     GST_TYPE_VIDEO_AGGREGATOR, G_IMPLEMENT_INTERFACE (GST_TYPE_CHILD_PROXY,
         gst_compositor_child_proxy_init));
 GST_ELEMENT_REGISTER_DEFINE (rgacompositor, "rgacompositor", GST_RANK_PRIMARY + 1,
     GST_TYPE_COMPOSITOR);
 
 static gboolean
-set_functions (GstCompositor * self, const GstVideoInfo * info)
+set_functions (GstRgaCompositor * self, const GstVideoInfo * info)
 {
   gint offset[GST_VIDEO_MAX_COMPONENTS] = { 0, };
   gint scale[GST_VIDEO_MAX_COMPONENTS] = { 0, };
@@ -824,10 +838,10 @@ set_functions (GstCompositor * self, const GstVideoInfo * info)
   gst_clear_buffer (&self->intermediate_frame);
   g_clear_pointer (&self->intermediate_convert, gst_video_converter_free);
 
-  self->blend = NULL;
-  self->overlay = NULL;
-  self->fill_checker = NULL;
-  self->fill_color = NULL;
+  // self->blend = NULL;
+  // self->overlay = NULL;
+  // self->fill_checker = NULL;
+  // self->fill_color = NULL;
 
   self->intermediate_info = *info;
 
@@ -1185,7 +1199,7 @@ _fixate_caps (GstAggregator * agg, GstCaps * caps)
   GST_OBJECT_LOCK (vagg);
   for (l = GST_ELEMENT (vagg)->sinkpads; l; l = l->next) {
     GstVideoAggregatorPad *vaggpad = (GstVideoAggregatorPad*)l->data;
-    GstCompositorPad *compositor_pad = GST_COMPOSITOR_PAD (vaggpad);
+    GstRgaCompositorPad *compositor_pad = GST_RGA_COMPOSITOR_PAD (vaggpad);
     gint this_width, this_height;
     gint width, height;
     gint fps_n, fps_d;
@@ -1198,7 +1212,7 @@ _fixate_caps (GstAggregator * agg, GstCaps * caps)
 
     fps_n = GST_VIDEO_INFO_FPS_N (&vaggpad->info);
     fps_d = GST_VIDEO_INFO_FPS_D (&vaggpad->info);
-    _mixer_pad_get_output_size (GST_COMPOSITOR (vagg), compositor_pad, par_n,
+    _mixer_pad_get_output_size (GST_RGA_COMPOSITOR (vagg), compositor_pad, par_n,
         par_d, &width, &height, &x_offset, &y_offset);
 
     if (width == 0 || height == 0)
@@ -1243,152 +1257,152 @@ _fixate_caps (GstAggregator * agg, GstCaps * caps)
   return ret;
 }
 
-static void
-gst_parallelized_task_thread_func (gpointer data)
-{
-  GstParallelizedTaskRunner *runner = (GstParallelizedTaskRunner*)data;
-  gint idx;
+// static void
+// gst_parallelized_task_thread_func (gpointer data)
+// {
+//   GstParallelizedTaskRunner *runner = (GstParallelizedTaskRunner*)data;
+//   gint idx;
 
-  g_mutex_lock (&runner->lock);
-  idx = runner->n_todo--;
-  g_assert (runner->n_todo >= -1);
-  g_mutex_unlock (&runner->lock);
+//   g_mutex_lock (&runner->lock);
+//   idx = runner->n_todo--;
+//   g_assert (runner->n_todo >= -1);
+//   g_mutex_unlock (&runner->lock);
 
-  g_assert (runner->func != NULL);
+//   g_assert (runner->func != NULL);
 
-  runner->func (runner->task_data[idx]);
-}
+//   runner->func (runner->task_data[idx]);
+// }
 
-static void
-gst_parallelized_task_runner_join (GstParallelizedTaskRunner * self)
-{
-  gboolean joined = FALSE;
+// static void
+// gst_parallelized_task_runner_join (GstParallelizedTaskRunner * self)
+// {
+//   gboolean joined = FALSE;
 
-  while (!joined) {
-    g_mutex_lock (&self->lock);
-    if (!(joined = gst_queue_array_is_empty (self->tasks))) {
-      gpointer task = gst_queue_array_pop_head (self->tasks);
-      g_mutex_unlock (&self->lock);
-      gst_task_pool_join (self->pool, task);
-    } else {
-      g_mutex_unlock (&self->lock);
-    }
-  }
-}
+//   while (!joined) {
+//     g_mutex_lock (&self->lock);
+//     if (!(joined = gst_queue_array_is_empty (self->tasks))) {
+//       gpointer task = gst_queue_array_pop_head (self->tasks);
+//       g_mutex_unlock (&self->lock);
+//       gst_task_pool_join (self->pool, task);
+//     } else {
+//       g_mutex_unlock (&self->lock);
+//     }
+//   }
+// }
 
-static void
-gst_parallelized_task_runner_free (GstParallelizedTaskRunner * self)
-{
-  gst_parallelized_task_runner_join (self);
+// static void
+// gst_parallelized_task_runner_free (GstParallelizedTaskRunner * self)
+// {
+//   gst_parallelized_task_runner_join (self);
 
-  gst_queue_array_free (self->tasks);
-  if (self->own_pool)
-    gst_task_pool_cleanup (self->pool);
-  gst_object_unref (self->pool);
-  g_mutex_clear (&self->lock);
-  g_free (self);
-}
+//   gst_queue_array_free (self->tasks);
+//   if (self->own_pool)
+//     gst_task_pool_cleanup (self->pool);
+//   gst_object_unref (self->pool);
+//   g_mutex_clear (&self->lock);
+//   g_free (self);
+// }
 
-static GstParallelizedTaskRunner *
-gst_parallelized_task_runner_new (guint n_threads, GstTaskPool * pool,
-    gboolean async_tasks)
-{
-  GstParallelizedTaskRunner *self;
+// static GstParallelizedTaskRunner *
+// gst_parallelized_task_runner_new (guint n_threads, GstTaskPool * pool,
+//     gboolean async_tasks)
+// {
+//   GstParallelizedTaskRunner *self;
 
-  if (n_threads == 0)
-    n_threads = g_get_num_processors ();
+//   if (n_threads == 0)
+//     n_threads = g_get_num_processors ();
 
-  self = g_new0 (GstParallelizedTaskRunner, 1);
+//   self = g_new0 (GstParallelizedTaskRunner, 1);
 
-  if (pool) {
-    self->pool = g_object_ref (pool);
-    self->own_pool = FALSE;
+//   if (pool) {
+//     self->pool = g_object_ref (pool);
+//     self->own_pool = FALSE;
 
-    /* No reason to split up the work between more threads than the
-     * pool can spawn */
-    if (GST_IS_SHARED_TASK_POOL (pool))
-      n_threads =
-          MIN (n_threads,
-          gst_shared_task_pool_get_max_threads (GST_SHARED_TASK_POOL (pool)));
-  } else {
-    self->pool = gst_shared_task_pool_new ();
-    self->own_pool = TRUE;
-    gst_shared_task_pool_set_max_threads (GST_SHARED_TASK_POOL (self->pool),
-        n_threads);
-    gst_task_pool_prepare (self->pool, NULL);
-  }
+//     /* No reason to split up the work between more threads than the
+//      * pool can spawn */
+//     if (GST_IS_SHARED_TASK_POOL (pool))
+//       n_threads =
+//           MIN (n_threads,
+//           gst_shared_task_pool_get_max_threads (GST_SHARED_TASK_POOL (pool)));
+//   } else {
+//     self->pool = gst_shared_task_pool_new ();
+//     self->own_pool = TRUE;
+//     gst_shared_task_pool_set_max_threads (GST_SHARED_TASK_POOL (self->pool),
+//         n_threads);
+//     gst_task_pool_prepare (self->pool, NULL);
+//   }
 
-  self->tasks = gst_queue_array_new (n_threads);
+//   self->tasks = gst_queue_array_new (n_threads);
 
-  self->n_threads = n_threads;
+//   self->n_threads = n_threads;
 
-  self->n_todo = -1;
-  g_mutex_init (&self->lock);
+//   self->n_todo = -1;
+//   g_mutex_init (&self->lock);
 
-  /* Set when scheduling a job */
-  self->func = NULL;
-  self->task_data = NULL;
-  self->async_tasks = async_tasks;
+//   /* Set when scheduling a job */
+//   self->func = NULL;
+//   self->task_data = NULL;
+//   self->async_tasks = async_tasks;
 
-  return self;
-}
+//   return self;
+// }
 
-static void
-gst_parallelized_task_runner_finish (GstParallelizedTaskRunner * self)
-{
-  g_return_if_fail (self->func != NULL);
+// static void
+// gst_parallelized_task_runner_finish (GstParallelizedTaskRunner * self)
+// {
+//   g_return_if_fail (self->func != NULL);
 
-  gst_parallelized_task_runner_join (self);
+//   gst_parallelized_task_runner_join (self);
 
-  self->func = NULL;
-  self->task_data = NULL;
-}
+//   self->func = NULL;
+//   self->task_data = NULL;
+// }
 
-static void
-gst_parallelized_task_runner_run (GstParallelizedTaskRunner * self,
-    GstParallelizedTaskFunc func, gpointer * task_data)
-{
-  guint n_threads = self->n_threads;
+// static void
+// gst_parallelized_task_runner_run (GstParallelizedTaskRunner * self,
+//     GstParallelizedTaskFunc func, gpointer * task_data)
+// {
+//   guint n_threads = self->n_threads;
 
-  self->func = func;
-  self->task_data = task_data;
+//   self->func = func;
+//   self->task_data = task_data;
 
-  if (n_threads > 1 || self->async_tasks) {
-    guint i = 0;
-    g_mutex_lock (&self->lock);
-    self->n_todo = self->n_threads - 1;
-    if (!self->async_tasks) {
-      /* if not async, perform one of the functions in the current thread */
-      self->n_todo--;
-      i = 1;
-    }
-    for (; i < n_threads; i++) {
-      gpointer task =
-          gst_task_pool_push (self->pool, gst_parallelized_task_thread_func,
-          self, NULL);
+//   if (n_threads > 1 || self->async_tasks) {
+//     guint i = 0;
+//     g_mutex_lock (&self->lock);
+//     self->n_todo = self->n_threads - 1;
+//     if (!self->async_tasks) {
+//       /* if not async, perform one of the functions in the current thread */
+//       self->n_todo--;
+//       i = 1;
+//     }
+//     for (; i < n_threads; i++) {
+//       gpointer task =
+//           gst_task_pool_push (self->pool, gst_parallelized_task_thread_func,
+//           self, NULL);
 
-      /* The return value of push() is nullable but NULL is only returned
-       * with the shared task pool when gst_task_pool_prepare() has not been
-       * called and would thus be a programming error that we should hard-fail
-       * on.
-       */
-      g_assert (task != NULL);
-      gst_queue_array_push_tail (self->tasks, task);
-    }
-    g_mutex_unlock (&self->lock);
-  }
+//       /* The return value of push() is nullable but NULL is only returned
+//        * with the shared task pool when gst_task_pool_prepare() has not been
+//        * called and would thus be a programming error that we should hard-fail
+//        * on.
+//        */
+//       g_assert (task != NULL);
+//       gst_queue_array_push_tail (self->tasks, task);
+//     }
+//     g_mutex_unlock (&self->lock);
+//   }
 
-  if (!self->async_tasks) {
-    self->func (self->task_data[self->n_threads - 1]);
+//   if (!self->async_tasks) {
+//     self->func (self->task_data[self->n_threads - 1]);
 
-    gst_parallelized_task_runner_finish (self);
-  }
-}
+//     gst_parallelized_task_runner_finish (self);
+//   }
+// }
 
 static gboolean
 _negotiated_caps (GstAggregator * agg, GstCaps * caps)
 {
-  GstCompositor *compositor = GST_COMPOSITOR (agg);
+  GstRgaCompositor *compositor = GST_RGA_COMPOSITOR (agg);
   GstVideoAggregator *vagg = GST_VIDEO_AGGREGATOR (agg);
   GstVideoInfo v_info;
   guint n_threads;
@@ -1452,21 +1466,6 @@ _negotiated_caps (GstAggregator * agg, GstCaps * caps)
   if (n_threads < 1)
     n_threads = 1;
 
-  /* XXX: implement better thread count change */
-#ifndef RGA_DISABLE_TASKRUNNER
-  if (compositor->blend_runner
-      && compositor->blend_runner->n_threads != n_threads) {
-    gst_parallelized_task_runner_free (compositor->blend_runner);
-    compositor->blend_runner = NULL;
-  }
-  if (!compositor->blend_runner) {
-    GstTaskPool *pool = gst_video_aggregator_get_execution_task_pool (vagg);
-    compositor->blend_runner =
-        gst_parallelized_task_runner_new (n_threads, pool, FALSE);
-    gst_clear_object (&pool);
-  }
-#endif
-
   if (compositor->intermediate_frame) {
     GstStructure *config = NULL;
     GstTaskPool *pool = gst_video_aggregator_get_execution_task_pool (vagg);
@@ -1489,7 +1488,7 @@ _negotiated_caps (GstAggregator * agg, GstCaps * caps)
 static gboolean
 gst_composior_stop (GstAggregator * agg)
 {
-  GstCompositor *self = GST_COMPOSITOR (agg);
+  GstRgaCompositor *self = GST_RGA_COMPOSITOR (agg);
 
   gst_clear_buffer (&self->intermediate_frame);
   g_clear_pointer (&self->intermediate_convert, gst_video_converter_free);
@@ -1542,110 +1541,16 @@ frames_can_copy (const GstVideoFrame * frame1, const GstVideoFrame * frame2)
 typedef struct CompositePadInfo
 {
   GstVideoFrame *prepared_frame;
-  GstCompositorPad *pad;
-  GstCompositorBlendMode blend_mode;
+  GstRgaCompositorPad *pad;
+  // GstCompositorBlendMode blend_mode;
 } CompositePadInfo;
-
-typedef struct CompositeTask
-{
-  GstCompositor *compositor;
-  GstVideoFrame *out_frame;
-  guint dst_line_start;
-  guint dst_line_end;
-  gboolean draw_background;
-  guint n_pads;
-  CompositePadInfo *pads_info;
-} CompositeTask;
-
-#ifndef RGA_DISABLE_TASKRUNNER
-static void
-_draw_background (GstCompositor * comp, GstVideoFrame * outframe,
-    guint y_start, guint y_end, BlendFunction * composite)
-{
-  *composite = comp->blend;
-
-  switch (comp->background) {
-    case COMPOSITOR_BACKGROUND_CHECKER:
-      comp->fill_checker (outframe, y_start, y_end);
-      break;
-    case COMPOSITOR_BACKGROUND_BLACK:
-      comp->fill_color (outframe, y_start, y_end,
-          comp->black_color[GST_VIDEO_COMP_Y],
-          comp->black_color[GST_VIDEO_COMP_U],
-          comp->black_color[GST_VIDEO_COMP_V]);
-      break;
-    case COMPOSITOR_BACKGROUND_WHITE:
-      comp->fill_color (outframe, y_start, y_end,
-          comp->white_color[GST_VIDEO_COMP_Y],
-          comp->white_color[GST_VIDEO_COMP_U],
-          comp->white_color[GST_VIDEO_COMP_V]);
-      break;
-    case COMPOSITOR_BACKGROUND_TRANSPARENT:
-    {
-      guint i, plane, num_planes, height;
-
-      num_planes = GST_VIDEO_FRAME_N_PLANES (outframe);
-      for (plane = 0; plane < num_planes; ++plane) {
-        const GstVideoFormatInfo *info;
-        gint comp[GST_VIDEO_MAX_COMPONENTS];
-        guint8 *pdata;
-        gsize rowsize, plane_stride;
-        gint yoffset;
-
-        info = outframe->info.finfo;
-        pdata = GST_VIDEO_FRAME_PLANE_DATA (outframe, plane);
-        plane_stride = GST_VIDEO_FRAME_PLANE_STRIDE (outframe, plane);
-
-        gst_video_format_info_component (info, plane, comp);
-        rowsize = GST_VIDEO_FRAME_COMP_WIDTH (outframe, comp[0])
-            * GST_VIDEO_FRAME_COMP_PSTRIDE (outframe, comp[0]);
-        height = GST_VIDEO_FORMAT_INFO_SCALE_HEIGHT (info, comp[0],
-            (y_end - y_start));
-
-        yoffset = GST_VIDEO_FORMAT_INFO_SCALE_HEIGHT (info, comp[0], y_start);
-
-        pdata += yoffset * plane_stride;
-        for (i = 0; i < height; ++i) {
-          memset (pdata, 0, rowsize);
-          pdata += plane_stride;
-        }
-      }
-      /* use overlay to keep background transparent */
-      *composite = comp->overlay;
-      break;
-    }
-  }
-}
-
-static void
-blend_pads (struct CompositeTask *comp)
-{
-  BlendFunction composite;
-  guint i;
-
-  composite = comp->compositor->blend;
-
-  if (comp->draw_background) {
-    _draw_background (comp->compositor, comp->out_frame, comp->dst_line_start,
-        comp->dst_line_end, &composite);
-  }
-
-  for (i = 0; i < comp->n_pads; i++) {
-    composite (comp->pads_info[i].prepared_frame,
-        comp->pads_info[i].pad->xpos + comp->pads_info[i].pad->x_offset,
-        comp->pads_info[i].pad->ypos + comp->pads_info[i].pad->y_offset,
-        comp->pads_info[i].pad->alpha, comp->out_frame, comp->dst_line_start,
-        comp->dst_line_end, comp->pads_info[i].blend_mode);
-  }
-}
-#else
 
 gboolean
 _rga_process_composite(rga_buffer_t *src_buf,
                        rga_buffer_t *dst_buf,
                        CompositePadInfo *padinfo)
 {
-  GstCompositorPad *pad = padinfo->pad;
+  GstRgaCompositorPad *pad = padinfo->pad;
   im_rect drect;
   int ret, usage;
 
@@ -1673,12 +1578,11 @@ _rga_process_composite(rga_buffer_t *src_buf,
   }
   return TRUE;
 }
-#endif
 
 static GstFlowReturn
 gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
 {
-  GstCompositor *compositor = GST_COMPOSITOR (vagg);
+  GstRgaCompositor *compositor = GST_RGA_COMPOSITOR (vagg);
   GList *l;
   // GstVideoFrame out_frame, intermediate_frame, *outframe;
   gboolean draw_background;
@@ -1746,25 +1650,25 @@ gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
 
   for (l = GST_ELEMENT (vagg)->sinkpads; l; l = l->next) {
     GstVideoAggregatorPad *pad = (GstVideoAggregatorPad*)l->data;
-    GstCompositorPad *compo_pad = GST_COMPOSITOR_PAD (pad);
+    GstRgaCompositorPad *compo_pad = GST_RGA_COMPOSITOR_PAD (pad);
     GstVideoFrame *prepared_frame =
         gst_video_aggregator_pad_get_prepared_frame (pad);
-    GstCompositorBlendMode blend_mode = COMPOSITOR_BLEND_MODE_OVER;
+    // GstCompositorBlendMode blend_mode = COMPOSITOR_BLEND_MODE_OVER;
 
-    switch (compo_pad->op) {
-      case COMPOSITOR_OPERATOR_SOURCE:
-        blend_mode = COMPOSITOR_BLEND_MODE_SOURCE;
-        break;
-      case COMPOSITOR_OPERATOR_OVER:
-        blend_mode = COMPOSITOR_BLEND_MODE_OVER;
-        break;
-      case COMPOSITOR_OPERATOR_ADD:
-        blend_mode = COMPOSITOR_BLEND_MODE_ADD;
-        break;
-      default:
-        g_assert_not_reached ();
-        break;
-    }
+    // switch (compo_pad->op) {
+    //   case COMPOSITOR_OPERATOR_SOURCE:
+    //     blend_mode = COMPOSITOR_BLEND_MODE_SOURCE;
+    //     break;
+    //   case COMPOSITOR_OPERATOR_OVER:
+    //     blend_mode = COMPOSITOR_BLEND_MODE_OVER;
+    //     break;
+    //   case COMPOSITOR_OPERATOR_ADD:
+    //     blend_mode = COMPOSITOR_BLEND_MODE_ADD;
+    //     break;
+    //   default:
+    //     g_assert_not_reached ();
+    //     break;
+    // }
 
     if (prepared_frame != NULL) {
       /* If this is the first pad we're drawing, and we didn't draw the
@@ -1777,7 +1681,7 @@ gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
       } else */{
         pads_info[n_pads].pad = compo_pad;
         pads_info[n_pads].prepared_frame = prepared_frame;
-        pads_info[n_pads].blend_mode = blend_mode;
+        // pads_info[n_pads].blend_mode = blend_mode;
 
         if (!src_ctx[n_pads].wrap(prepared_frame, GST_MAP_READ)) {
           GST_ERROR("rgacompositor wrap rga buffer failed");
@@ -1793,56 +1697,6 @@ gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
       drawn_a_pad = TRUE;
     }
   }
-
-#ifndef RGA_DISABLE_TASKRUNNER
-  {
-    guint n_threads, lines_per_thread;
-    guint out_height;
-    struct CompositeTask *tasks;
-    struct CompositeTask **tasks_p;
-
-    n_threads = compositor->blend_runner->n_threads;
-
-    tasks = g_newa (struct CompositeTask, n_threads);
-    tasks_p = g_newa (struct CompositeTask *, n_threads);
-
-    out_height = GST_VIDEO_FRAME_HEIGHT (outframe);
-    lines_per_thread = (out_height + n_threads - 1) / n_threads;
-
-    for (i = 0; i < n_threads; i++) {
-      tasks[i].compositor = compositor;
-      tasks[i].n_pads = n_pads;
-      tasks[i].pads_info = pads_info;
-      tasks[i].out_frame = outframe;
-      tasks[i].draw_background = draw_background;
-      /* This is a dumb split of the work by number of output lines.
-       * If there is a section of the output that reads from a lot of source
-       * pads, then that thread will consume more time. Maybe tracking and
-       * splitting on the source fill rate would produce better results. */
-      tasks[i].dst_line_start = i * lines_per_thread;
-      tasks[i].dst_line_end = MIN ((i + 1) * lines_per_thread, out_height);
-
-      tasks_p[i] = &tasks[i];
-    }
-
-    gst_parallelized_task_runner_run (compositor->blend_runner,
-        (GstParallelizedTaskFunc) blend_pads, (gpointer *) tasks_p);
-  }
-#else
-  // if (n_pads > 0) {
-  //   struct CompositeTask *task;
-
-  //   task = g_newa (struct CompositeTask, 1);
-  //   task->compositor = compositor;
-  //   task->n_pads = n_pads;
-  //   task->pads_info = pads_info;
-  //   task->draw_background = draw_background;
-
-  //   if (GST_FLOW_ERROR == blend_pads(task)) {
-  //     return GST_FLOW_ERROR;
-  //   }
-  // }
-#endif
 
   GST_OBJECT_UNLOCK (vagg);
 
@@ -1887,10 +1741,9 @@ could_not_create:
 static void
 gst_compositor_release_pad (GstElement * element, GstPad * pad)
 {
-  /*Debug*/GST_DEBUG("release pad: %s from %s", GST_PAD_NAME(pad), GST_ELEMENT_NAME(element));
-  GstCompositor *compositor;
+  GstRgaCompositor *compositor;
 
-  compositor = GST_COMPOSITOR (element);
+  compositor = GST_RGA_COMPOSITOR (element);
 
   GST_DEBUG_OBJECT (compositor, "release pad %s:%s", GST_DEBUG_PAD_NAME (pad));
 
@@ -1904,8 +1757,8 @@ static gboolean
 src_pad_mouse_event (GstElement * element, GstPad * pad, gpointer user_data)
 {
   GstVideoAggregator *vagg = GST_VIDEO_AGGREGATOR_CAST (element);
-  GstCompositor *comp = GST_COMPOSITOR (element);
-  GstCompositorPad *cpad = GST_COMPOSITOR_PAD (pad);
+  GstRgaCompositor *comp = GST_RGA_COMPOSITOR (element);
+  GstRgaCompositorPad *cpad = GST_RGA_COMPOSITOR_PAD (pad);
   GstStructure *st =
       gst_structure_copy (gst_event_get_structure (GST_EVENT_CAST (user_data)));
   gdouble event_x, event_y;
@@ -2018,13 +1871,7 @@ _sink_query (GstAggregator * agg, GstAggregatorPad * bpad, GstQuery * query)
 static void
 gst_compositor_finalize (GObject * object)
 {
-  GstCompositor *compositor = GST_COMPOSITOR (object);
-
-#ifndef RGA_DISABLE_TASKRUNNER
-  if (compositor->blend_runner)
-    gst_parallelized_task_runner_free (compositor->blend_runner);
-  compositor->blend_runner = NULL;
-#endif
+  GstRgaCompositor *compositor = GST_RGA_COMPOSITOR (object);
 
   rga_compositor_deinit_rkrga();
 
@@ -2033,9 +1880,8 @@ gst_compositor_finalize (GObject * object)
 
 /* GObject boilerplate */
 static void
-gst_compositor_class_init (GstCompositorClass * klass)
+gst_rga_compositor_class_init (GstRgaCompositorClass * klass)
 {
-  /*Debug*/GST_DEBUG("\e[1;31mDebug\e[0m");
   GObjectClass *gobject_class = (GObjectClass *) klass;
   GstElementClass *gstelement_class = (GstElementClass *) klass;
   GstVideoAggregatorClass *videoaggregator_class =
@@ -2099,8 +1945,8 @@ gst_compositor_class_init (GstCompositorClass * klass)
 
   gst_element_class_set_static_metadata (gstelement_class, "Compositor",
       "Filter/Editor/Video/Compositor",
-      "Composite multiple video streams", "Wim Taymans <wim@fluendo.com>, "
-      "Sebastian Dröge <sebastian.droege@collabora.co.uk>");
+      "Composite multiple video streams",
+      "https://");
 
   /**
    * compositor:ignore-inactive-pads:
@@ -2128,15 +1974,13 @@ gst_compositor_class_init (GstCompositorClass * klass)
 }
 
 static void
-gst_compositor_init (GstCompositor * self)
+gst_rga_compositor_init (GstRgaCompositor * self)
 {
-  /*Debug*/GST_DEBUG("Debug");
   /* initialize variables */
   self->background = DEFAULT_BACKGROUND;
   self->zero_size_is_unscaled = DEFAULT_ZERO_SIZE_IS_UNSCALED;
   self->max_threads = DEFAULT_MAX_THREADS;
 
-  rga_compositor_init_rkrga();
 }
 
 /* GstChildProxy implementation */
@@ -2144,7 +1988,7 @@ static GObject *
 gst_compositor_child_proxy_get_child_by_index (GstChildProxy * child_proxy,
     guint index)
 {
-  GstCompositor *compositor = GST_COMPOSITOR (child_proxy);
+  GstRgaCompositor *compositor = GST_RGA_COMPOSITOR (child_proxy);
   GObject *obj = NULL;
 
   GST_OBJECT_LOCK (compositor);
@@ -2160,7 +2004,7 @@ static guint
 gst_compositor_child_proxy_get_children_count (GstChildProxy * child_proxy)
 {
   guint count = 0;
-  GstCompositor *compositor = GST_COMPOSITOR (child_proxy);
+  GstRgaCompositor *compositor = GST_RGA_COMPOSITOR (child_proxy);
 
   GST_OBJECT_LOCK (compositor);
   count = GST_ELEMENT_CAST (compositor)->numsinkpads;
@@ -2184,9 +2028,8 @@ static gboolean
 plugin_init (GstPlugin * plugin)
 {
   GST_DEBUG_CATEGORY_INIT (gst_rgacompositor_debug, "rgacompositor", 0, "rgacompositor");
-  /*Debug*/GST_DEBUG("Debug");
 
-  gst_compositor_init_blend ();
+  rga_compositor_init_rkrga();
 
   return GST_ELEMENT_REGISTER (rgacompositor, plugin);
 }
