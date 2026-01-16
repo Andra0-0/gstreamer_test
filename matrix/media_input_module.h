@@ -52,9 +52,7 @@ public:
     kTypeStreamFallback1 = 1, // input-selector sink_1
   };
   struct InputPadCase {
-    // unordered_map<string, GstPad*> a;
     StreamType type_;
-    // GstPad *indev_src_pad_;
     MediaInputIntfPtr indev_src_;
   };
 

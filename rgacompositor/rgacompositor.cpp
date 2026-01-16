@@ -836,6 +836,7 @@ set_functions (GstRgaCompositor * self, const GstVideoInfo * info)
   gint i;
 
   gst_clear_buffer (&self->intermediate_frame);
+  gst_clear_buffer (&self->background_frame);
   g_clear_pointer (&self->intermediate_convert, gst_video_converter_free);
 
   // self->blend = NULL;
@@ -844,6 +845,45 @@ set_functions (GstRgaCompositor * self, const GstVideoInfo * info)
   // self->fill_color = NULL;
 
   self->intermediate_info = *info;
+
+  gst_video_info_init(&self->background_info);
+  gst_video_info_set_format(&self->background_info, GST_VIDEO_FORMAT_RGBA, info->width, info->height);
+
+  bool ret = self->background_ctx.wrap_dmabuf(&self->background_info);
+  if (!ret) { // allocate virtual memory
+    GST_WARNING("background frame alloc dmabuf error");
+
+    self->background_frame =
+            gst_buffer_new_and_alloc (GST_VIDEO_INFO_SIZE(&self->background_info));
+    if (!self->background_frame) {
+      GST_ERROR("background frame alloc error");
+      return FALSE;
+    }
+    if (!self->background_ctx.wrap(self->background_frame,
+            &self->background_info, GST_MAP_READWRITE)) {
+      GST_ERROR("background rga context wrap error");
+      return FALSE;
+    }
+  }
+
+  // background fill black
+  // im_rect rect;
+  // rect.x = 0;
+  // rect.y = 0;
+  // rect.width = self->background_info.width;
+  // rect.height = self->background_info.height;
+
+  // int ret;
+  // ret = imcheck({}, self->background_ctx.rgabuf_, {}, rect, IM_COLOR_FILL);
+  // if (ret != IM_STATUS_NOERROR) {
+  //   GST_ERROR("background fill check error");
+  //   return FALSE;
+  // }
+  // ret = imfill(self->background_ctx.rgabuf_, rect, 0xff000000);
+  // if (ret != IM_STATUS_SUCCESS) {
+  //   GST_ERROR("background fill color failed");
+  //   return FALSE;
+  // }
 
   // switch (GST_VIDEO_INFO_FORMAT (info)) {
   //   case GST_VIDEO_FORMAT_AYUV:
@@ -1176,6 +1216,7 @@ set_functions (GstRgaCompositor * self, const GstVideoInfo * info)
 static GstCaps *
 _fixate_caps (GstAggregator * agg, GstCaps * caps)
 {
+  /*Debug*/GST_DEBUG("rgacompositor fixate caps");
   GstVideoAggregator *vagg = GST_VIDEO_AGGREGATOR (agg);
   GList *l;
   gint best_width = -1, best_height = -1;
@@ -1402,6 +1443,7 @@ _fixate_caps (GstAggregator * agg, GstCaps * caps)
 static gboolean
 _negotiated_caps (GstAggregator * agg, GstCaps * caps)
 {
+  /*Debug*/GST_DEBUG("rgacompositor negotiated caps");
   GstRgaCompositor *compositor = GST_RGA_COMPOSITOR (agg);
   GstVideoAggregator *vagg = GST_VIDEO_AGGREGATOR (agg);
   GstVideoInfo v_info;
@@ -1488,9 +1530,11 @@ _negotiated_caps (GstAggregator * agg, GstCaps * caps)
 static gboolean
 gst_composior_stop (GstAggregator * agg)
 {
+  /*Debug*/GST_DEBUG("rgacompositor stop");
   GstRgaCompositor *self = GST_RGA_COMPOSITOR (agg);
 
   gst_clear_buffer (&self->intermediate_frame);
+  gst_clear_buffer (&self->background_frame);
   g_clear_pointer (&self->intermediate_convert, gst_video_converter_free);
 
   return GST_AGGREGATOR_CLASS (parent_class)->stop (agg);
@@ -1545,90 +1589,169 @@ typedef struct CompositePadInfo
   // GstCompositorBlendMode blend_mode;
 } CompositePadInfo;
 
+// struct RgaCompositeTask
+// {
+//   GstRgaCompositor *compositor;
+//   rga_buffer_t *src_buf;
+//   rga_buffer_t *dst_buf;
+//   rga_buffer_t *bgd_buf;
+//   int *release_fence_fd;
+//   CompositePadInfo *pads_info;
+// };
+
 gboolean
-_rga_process_composite(rga_buffer_t *src_buf,
-                       rga_buffer_t *dst_buf,
-                       CompositePadInfo *padinfo)
+_rga_sync_process(std::vector<int> &release_fence_fds, int n_pads)
 {
-  GstRgaCompositorPad *pad = padinfo->pad;
-  im_rect drect;
+  int ret;
+
+  // Sync for all improcess
+  for (int i = 0; i < n_pads; ++i) {
+    if (release_fence_fds[i] >= 0) {
+      ret = imsync(release_fence_fds[i]);
+      if (ret != IM_STATUS_SUCCESS) {
+        GST_ERROR("rga sync error %s", imStrError((IM_STATUS)ret));
+        continue;
+      }
+    }
+  }
+  return TRUE;
+}
+
+gboolean
+_rga_async_process_composite(rga_buffer_t &src_buf,
+                             rga_buffer_t &dst_buf,
+                             CompositePadInfo &padinfo,
+                             int &release_fence_fd)
+{
+  GstRgaCompositorPad *pad = padinfo.pad;
+  im_rect srect, drect;
   int ret, usage;
 
   // if pad width/height = 0, use input frame width/height
-  gint disp_w = (pad->width > 0) ? pad->width : src_buf->width;
-  gint disp_h = (pad->height > 0) ? pad->height : src_buf->height;
+  gint disp_w = (pad->width > 0) ? pad->width : src_buf.width;
+  gint disp_h = (pad->height > 0) ? pad->height : src_buf.height;
+
+  usage = IM_ASYNC; // | IM_ALPHA_BLEND_SRC_OVER | IM_ALPHA_BLEND_PRE_MUL;
 
   drect.x = pad->xpos;
   drect.y = pad->ypos;
   drect.width = disp_w;
   drect.height = disp_h;
 
-  usage = IM_SYNC | IM_ALPHA_BLEND_SRC_OVER | IM_ALPHA_BLEND_PRE_MUL;
-
-  ret = imcheck_composite(*src_buf, *dst_buf, {}, {}, drect, {}, usage);
+  ret = imcheck(src_buf, dst_buf, {}, drect, usage);
   if (IM_STATUS_NOERROR != ret) {
-    GST_ERROR("imcheck_composite error: %s", imStrError((IM_STATUS)ret));
+    GST_ERROR("imcheck error: %s", imStrError((IM_STATUS)ret));
     return FALSE;
   }
 
-  ret = improcess(*src_buf, *dst_buf, {}, {}, drect, {}, usage);
+  ret = improcess(src_buf, dst_buf, {}, {}, drect, {},
+          -1, &release_fence_fd, NULL, usage);
   if (IM_STATUS_SUCCESS != ret) {
     GST_ERROR("improcess failed, %s", imStrError((IM_STATUS)ret));
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+gboolean
+_rga_async_process_bg_composite(rga_buffer_t &src_buf,
+                                rga_buffer_t &dst_buf,
+                                rga_buffer_t &bgd_buf,
+                                CompositePadInfo &padinfo,
+                                int &release_fence_fd)
+{
+  GstRgaCompositorPad *pad = padinfo.pad;
+  im_rect srect, drect;
+  int ret, usage;
+
+  // if pad width/height = 0, use input frame width/height
+  gint disp_w = (pad->width > 0) ? pad->width : src_buf.width;
+  gint disp_h = (pad->height > 0) ? pad->height : src_buf.height;
+
+  usage = IM_ASYNC; // | IM_ALPHA_BLEND_SRC_OVER | IM_ALPHA_BLEND_PRE_MUL;
+
+  drect.x = pad->xpos;
+  drect.y = pad->ypos;
+  drect.width = disp_w;
+  drect.height = disp_h;
+
+  ret = imcheck(src_buf, bgd_buf, {}, drect, usage);
+  if (IM_STATUS_NOERROR != ret) {
+    GST_ERROR("imcheck error: %s", imStrError((IM_STATUS)ret));
+    return FALSE;
+  }
+
+  ret = improcess(src_buf, bgd_buf, {}, {}, drect, {},
+          -1, &release_fence_fd, NULL, usage);
+  if (IM_STATUS_SUCCESS != ret) {
+    GST_ERROR("improcess failed, %s", imStrError((IM_STATUS)ret));
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+gboolean
+_rga_process_bg_copy(rga_buffer_t &dst_buf,
+                     rga_buffer_t &bgd_buf,
+                     std::vector<int> &release_fence_fds,
+                     int n_pads)
+{
+  int ret;
+
+  _rga_sync_process(release_fence_fds, n_pads);
+
+  ret = imcheck(bgd_buf, dst_buf, {}, {});
+  if (IM_STATUS_NOERROR != ret) {
+    GST_ERROR("imcheck failed, %s", imStrError((IM_STATUS)ret));
+    return FALSE;
+  }
+
+  ret = imcopy(bgd_buf, dst_buf);
+  if (IM_STATUS_SUCCESS != ret) {
+    GST_ERROR("imcopy failed, %s", imStrError((IM_STATUS)ret));
     return FALSE;
   }
   return TRUE;
 }
 
+// static void
+// _entry_rga_process(RgaCompositeTask *task)
+// {
+//   // TestRuntime c;
+
+//   _rga_async_process_bg_composite(task->src_buf,
+//                                   task->dst_buf,
+//                                   task->bgd_buf,
+//                                   task->pads_info,
+//                                   task->release_fence_fd);
+//   if (*task->release_fence_fd >= 0) {
+//     int ret = imsync(*task->release_fence_fd);
+//     if (ret != IM_STATUS_SUCCESS) {
+//       GST_ERROR("rga sync error %s", imStrError((IM_STATUS)ret));
+//     }
+//   }
+// }
+
 static GstFlowReturn
 gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
 {
+  TestRuntime a;
   GstRgaCompositor *compositor = GST_RGA_COMPOSITOR (vagg);
   GList *l;
   // GstVideoFrame out_frame, intermediate_frame, *outframe;
-  gboolean draw_background;
-  guint drawn_a_pad = FALSE;
+  // gboolean draw_background;
+  // guint drawn_a_pad = FALSE;
   struct CompositePadInfo *pads_info;
   guint i, n_pads = 0;
 
-  RkrgaContext dst_ctx;
-  std::vector<RkrgaContext> src_ctx;
-
-  // TODO: gst_video_frame_map make outbuf not writable
-  // if (!gst_video_frame_map (&out_frame, &vagg->info, outbuf, GST_MAP_WRITE)) {
-  //   GST_WARNING_OBJECT (vagg, "Could not map output buffer");
-  //   return GST_FLOW_ERROR;
-  // }
-
-  // outframe = &out_frame;
-
-  // 转换视频帧 到 rga buffer
-  if (!dst_ctx.wrap(outbuf, &vagg->info, GST_MAP_WRITE)) {
+  if (!compositor->dst_ctx.wrap(outbuf, &vagg->info, GST_MAP_WRITE)) {
     GST_WARNING_OBJECT(compositor, "Could not wrap rga buffer");
     return GST_FLOW_ERROR;
   }
 
-  // 映射转换帧缓冲区
-  // if (compositor->intermediate_frame) {
-  //   if (!gst_video_frame_map (&intermediate_frame,
-  //           &compositor->intermediate_info, compositor->intermediate_frame,
-  //           GST_MAP_READWRITE)) {
-  //     GST_WARNING_OBJECT (vagg, "Could not map intermediate buffer");
-  //     gst_video_frame_unmap (&out_frame);
-  //     return GST_FLOW_ERROR;
-  //   }
-
-  //   outframe = &intermediate_frame;
-  // }
-
-  /* If one of the frames to be composited completely obscures the background,
-   * don't bother drawing the background at all. We can also always use the
-   * 'blend' BlendFunction in that case because it only changes if we have to
-   * overlay on top of a transparent background. */
-  // 如果视频帧能完全覆盖背景，就不用画背景
-  draw_background = _should_draw_background (vagg);
-
   GST_OBJECT_LOCK (vagg);
-  // 遍历sinkpads，计数可读视频帧
   for (l = GST_ELEMENT (vagg)->sinkpads; l; l = l->next) {
     GstVideoAggregatorPad *pad = (GstVideoAggregatorPad*)l->data;
     GstVideoFrame *prepared_frame =
@@ -1638,85 +1761,223 @@ gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
       n_pads++;
   }
 
-  /* If no prepared frame, we should draw background unconditionally in order
-   * to clear output buffer */
-  if (n_pads == 0)
-    draw_background = TRUE;
-
-  // 根据上面的可读视频帧数分配栈内存
+  if (n_pads > compositor->src_.ctxs.size()) {
+    compositor->src_.ctxs.resize(n_pads);
+    compositor->src_.release_fence_fds.resize(n_pads);
+    // compositor->src_.pads_info.resize(n_pads);
+  }
   pads_info = g_newa (CompositePadInfo, n_pads);
-  src_ctx = std::vector<RkrgaContext>(n_pads);
-  n_pads = 0;
 
-  for (l = GST_ELEMENT (vagg)->sinkpads; l; l = l->next) {
+  for (l = GST_ELEMENT (vagg)->sinkpads, i = 0; l; l = l->next) {
     GstVideoAggregatorPad *pad = (GstVideoAggregatorPad*)l->data;
-    GstRgaCompositorPad *compo_pad = GST_RGA_COMPOSITOR_PAD (pad);
     GstVideoFrame *prepared_frame =
         gst_video_aggregator_pad_get_prepared_frame (pad);
-    // GstCompositorBlendMode blend_mode = COMPOSITOR_BLEND_MODE_OVER;
 
-    // switch (compo_pad->op) {
-    //   case COMPOSITOR_OPERATOR_SOURCE:
-    //     blend_mode = COMPOSITOR_BLEND_MODE_SOURCE;
-    //     break;
-    //   case COMPOSITOR_OPERATOR_OVER:
-    //     blend_mode = COMPOSITOR_BLEND_MODE_OVER;
-    //     break;
-    //   case COMPOSITOR_OPERATOR_ADD:
-    //     blend_mode = COMPOSITOR_BLEND_MODE_ADD;
-    //     break;
-    //   default:
-    //     g_assert_not_reached ();
-    //     break;
-    // }
-
-    if (prepared_frame != NULL) {
-      /* If this is the first pad we're drawing, and we didn't draw the
-       * background, and @prepared_frame has the same format, height, and width
-       * as @outframe, then we can just copy it as-is. Subsequent pads (if any)
-       * will be composited on top of it. */
-      /*if (!drawn_a_pad && !draw_background &&
-          frames_can_copy (prepared_frame, outframe)) {
-        gst_video_frame_copy (outframe, prepared_frame);
-      } else */{
-        pads_info[n_pads].pad = compo_pad;
-        pads_info[n_pads].prepared_frame = prepared_frame;
-        // pads_info[n_pads].blend_mode = blend_mode;
-
-        if (!src_ctx[n_pads].wrap(prepared_frame, GST_MAP_READ)) {
-          GST_ERROR("rgacompositor wrap rga buffer failed");
-          // continue;
-        }
-
-        if (!_rga_process_composite(&src_ctx[n_pads].rgabuf_,
-                &dst_ctx.rgabuf_, &pads_info[n_pads])) {
-          GST_DEBUG("error!!!");
-        }
-        n_pads++;
+    if (prepared_frame) {
+      if (!compositor->src_.ctxs[i].wrap(prepared_frame, GST_MAP_READ)) {
+        GST_ERROR("Prepared frame rga wrap buffer error");
+        continue;
       }
-      drawn_a_pad = TRUE;
+      compositor->src_.release_fence_fds[i] = -1;
+
+      pads_info[i].pad = GST_RGA_COMPOSITOR_PAD(pad);
+      pads_info[i].prepared_frame = prepared_frame;
+      i++;
     }
   }
-
   GST_OBJECT_UNLOCK (vagg);
 
-  // if (compositor->intermediate_frame) {
-  //   gst_video_converter_frame (compositor->intermediate_convert,
-  //       &intermediate_frame, &out_frame);
+  if (n_pads > 0) {
+    // FIXME 去掉中间缓冲帧，直接在目标帧生成有问题，画面抖动且优化效果不好
+    // for (i = 0; i < n_pads; ++i) {
+    //   _rga_async_process_composite(compositor->src_.ctxs[i].rgabuf_,
+    //                                compositor->dst_ctx.rgabuf_,
+    //                                pads_info[i],
+    //                                compositor->src_.release_fence_fds[i]);
+    // }
+    // _rga_sync_process(compositor->src_.release_fence_fds, n_pads);
+    for (i = 0; i < n_pads; ++i) {
+      _rga_async_process_bg_composite(compositor->src_.ctxs[i].rgabuf_,
+                                      compositor->dst_ctx.rgabuf_,
+                                      compositor->background_ctx.rgabuf_,
+                                      pads_info[i],
+                                      compositor->src_.release_fence_fds[i]);
+    }
+    _rga_process_bg_copy(compositor->dst_ctx.rgabuf_,
+                         compositor->background_ctx.rgabuf_,
+                         compositor->src_.release_fence_fds, n_pads);
+    for (i = 0; i < n_pads; ++i) {
+      compositor->src_.ctxs[i].unwrap();
+    }
+  } else {
+    imfill(compositor->background_ctx.rgabuf_,
+           im_rect{0, 0, compositor->background_ctx.rgabuf_.width,
+                   compositor->background_ctx.rgabuf_.height},
+           0xff000000);
+    _rga_process_bg_copy(compositor->dst_ctx.rgabuf_,
+                         compositor->background_ctx.rgabuf_,
+                         compositor->src_.release_fence_fds, 0);
+  }
 
-  //   gst_video_frame_unmap (&intermediate_frame);
-  // }
-
-  // gst_video_frame_unmap (&out_frame);
+  compositor->dst_ctx.unwrap();
 
   return GST_FLOW_OK;
 }
+
+// static GstFlowReturn
+// gst_compositor_aggregate_frames (GstVideoAggregator * vagg, GstBuffer * outbuf)
+// {
+//   TestRuntime a;
+//   GstRgaCompositor *compositor = GST_RGA_COMPOSITOR (vagg);
+//   GList *l;
+//   // GstVideoFrame out_frame, intermediate_frame, *outframe;
+//   gboolean draw_background;
+//   guint drawn_a_pad = FALSE;
+//   struct CompositePadInfo *pads_info;
+//   guint i, n_pads = 0;
+
+//   RkrgaContext dst_ctx;
+//   std::vector<RkrgaContext> src_ctx;
+//   std::vector<int> release_fence_fds;
+
+//   // TODO: gst_video_frame_map make outbuf not writable
+//   // if (!gst_video_frame_map (&out_frame, &vagg->info, outbuf, GST_MAP_WRITE)) {
+//   //   GST_WARNING_OBJECT (vagg, "Could not map output buffer");
+//   //   return GST_FLOW_ERROR;
+//   // }
+
+//   // outframe = &out_frame;
+
+//   // 转换视频帧 到 rga buffer
+//   if (!dst_ctx.wrap(outbuf, &vagg->info, GST_MAP_WRITE)) {
+//     GST_WARNING_OBJECT(compositor, "Could not wrap rga buffer");
+//     return GST_FLOW_ERROR;
+//   }
+
+//   // 映射转换帧缓冲区
+//   // if (compositor->intermediate_frame) {
+//   //   if (!gst_video_frame_map (&intermediate_frame,
+//   //           &compositor->intermediate_info, compositor->intermediate_frame,
+//   //           GST_MAP_READWRITE)) {
+//   //     GST_WARNING_OBJECT (vagg, "Could not map intermediate buffer");
+//   //     gst_video_frame_unmap (&out_frame);
+//   //     return GST_FLOW_ERROR;
+//   //   }
+
+//   //   outframe = &intermediate_frame;
+//   // }
+
+//   /* If one of the frames to be composited completely obscures the background,
+//    * don't bother drawing the background at all. We can also always use the
+//    * 'blend' BlendFunction in that case because it only changes if we have to
+//    * overlay on top of a transparent background. */
+//   // 如果视频帧能完全覆盖背景，就不用画背景
+//   draw_background = _should_draw_background (vagg);
+
+//   GST_OBJECT_LOCK (vagg);
+//   // 遍历sinkpads，计数可读视频帧
+//   for (l = GST_ELEMENT (vagg)->sinkpads; l; l = l->next) {
+//     GstVideoAggregatorPad *pad = (GstVideoAggregatorPad*)l->data;
+//     GstVideoFrame *prepared_frame =
+//         gst_video_aggregator_pad_get_prepared_frame (pad);
+
+//     if (prepared_frame)
+//       n_pads++;
+//   }
+
+//   /* If no prepared frame, we should draw background unconditionally in order
+//    * to clear output buffer */
+//   if (n_pads == 0)
+//     draw_background = TRUE;
+
+//   // 根据上面的可读视频帧数分配栈内存
+//   pads_info = g_newa (CompositePadInfo, n_pads);
+//   src_ctx = std::vector<RkrgaContext>(n_pads);
+//   release_fence_fds = std::vector<int>(n_pads);
+//   n_pads = 0;
+
+//   for (l = GST_ELEMENT (vagg)->sinkpads; l; l = l->next) {
+//     GstVideoAggregatorPad *pad = (GstVideoAggregatorPad*)l->data;
+//     GstRgaCompositorPad *compo_pad = GST_RGA_COMPOSITOR_PAD (pad);
+//     GstVideoFrame *prepared_frame =
+//         gst_video_aggregator_pad_get_prepared_frame (pad);
+//     // GstCompositorBlendMode blend_mode = COMPOSITOR_BLEND_MODE_OVER;
+
+//     // switch (compo_pad->op) {
+//     //   case COMPOSITOR_OPERATOR_SOURCE:
+//     //     blend_mode = COMPOSITOR_BLEND_MODE_SOURCE;
+//     //     break;
+//     //   case COMPOSITOR_OPERATOR_OVER:
+//     //     blend_mode = COMPOSITOR_BLEND_MODE_OVER;
+//     //     break;
+//     //   case COMPOSITOR_OPERATOR_ADD:
+//     //     blend_mode = COMPOSITOR_BLEND_MODE_ADD;
+//     //     break;
+//     //   default:
+//     //     g_assert_not_reached ();
+//     //     break;
+//     // }
+
+//     if (prepared_frame != NULL) {
+//       /* If this is the first pad we're drawing, and we didn't draw the
+//        * background, and @prepared_frame has the same format, height, and width
+//        * as @outframe, then we can just copy it as-is. Subsequent pads (if any)
+//        * will be composited on top of it. */
+//       /*if (!drawn_a_pad && !draw_background &&
+//           frames_can_copy (prepared_frame, outframe)) {
+//         gst_video_frame_copy (outframe, prepared_frame);
+//       } else */{
+//         pads_info[n_pads].pad = compo_pad;
+//         pads_info[n_pads].prepared_frame = prepared_frame;
+//         // pads_info[n_pads].blend_mode = blend_mode;
+
+//         if (!src_ctx[n_pads].wrap(prepared_frame, GST_MAP_READ)) {
+//           GST_ERROR("rgacompositor wrap rga buffer failed");
+//           // continue;
+//         }
+
+//         // if (!_rga_process_composite(&src_ctx[n_pads].rgabuf_,
+//         //         &dst_ctx.rgabuf_, &pads_info[n_pads])) {
+//         //   GST_DEBUG("error!!!");
+//         // }
+//         // if (!_rga_process_bg_composite(&src_ctx[n_pads].rgabuf_, &dst_ctx.rgabuf_,
+//         //         &compositor->background_ctx.rgabuf_, &pads_info[n_pads])) {
+//         //   GST_DEBUG("error!!!");
+//         // }
+//         if (!_rga_async_process_bg_composite(&src_ctx[n_pads].rgabuf_,
+//                 &dst_ctx.rgabuf_, &compositor->background_ctx.rgabuf_,
+//                 &pads_info[n_pads], &release_fence_fds[n_pads])) {
+//           GST_DEBUG("error!!!");
+//         }
+//         n_pads++;
+//       }
+//       drawn_a_pad = TRUE;
+//     }
+//   }
+//   if (!_rga_process_bg_copy(&dst_ctx.rgabuf_,
+//           &compositor->background_ctx.rgabuf_, release_fence_fds, n_pads)) {
+//     GST_DEBUG("copy error!");
+//   }
+
+//   GST_OBJECT_UNLOCK (vagg);
+
+//   // if (compositor->intermediate_frame) {
+//   //   gst_video_converter_frame (compositor->intermediate_convert,
+//   //       &intermediate_frame, &out_frame);
+
+//   //   gst_video_frame_unmap (&intermediate_frame);
+//   // }
+
+//   // gst_video_frame_unmap (&out_frame);
+
+//   return GST_FLOW_OK;
+// }
 
 static GstPad *
 gst_compositor_request_new_pad (GstElement * element, GstPadTemplate * templ,
     const gchar * req_name, const GstCaps * caps)
 {
-  /*Debug*/GST_DEBUG("request pad: %s from %s", req_name, GST_ELEMENT_NAME(element));
+  /*Debug*/GST_DEBUG("rgacompositor req new pad");
   GstPad *newpad;
 
   newpad = (GstPad *)
@@ -1741,6 +2002,7 @@ could_not_create:
 static void
 gst_compositor_release_pad (GstElement * element, GstPad * pad)
 {
+  /*Debug*/GST_DEBUG("rgacompositor release pad");
   GstRgaCompositor *compositor;
 
   compositor = GST_RGA_COMPOSITOR (element);
@@ -1756,6 +2018,7 @@ gst_compositor_release_pad (GstElement * element, GstPad * pad)
 static gboolean
 src_pad_mouse_event (GstElement * element, GstPad * pad, gpointer user_data)
 {
+  /*Debug*/GST_DEBUG("src pad mouse event");
   GstVideoAggregator *vagg = GST_VIDEO_AGGREGATOR_CAST (element);
   GstRgaCompositor *comp = GST_RGA_COMPOSITOR (element);
   GstRgaCompositorPad *cpad = GST_RGA_COMPOSITOR_PAD (pad);
@@ -1871,9 +2134,12 @@ _sink_query (GstAggregator * agg, GstAggregatorPad * bpad, GstQuery * query)
 static void
 gst_compositor_finalize (GObject * object)
 {
+  /*Debug*/GST_DEBUG("rgacompositor finalize");
   GstRgaCompositor *compositor = GST_RGA_COMPOSITOR (object);
 
   rga_compositor_deinit_rkrga();
+  compositor->background_ctx.unwrap();
+
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
@@ -1882,6 +2148,7 @@ gst_compositor_finalize (GObject * object)
 static void
 gst_rga_compositor_class_init (GstRgaCompositorClass * klass)
 {
+  /*Debug*/GST_DEBUG("rgacompositor class init");
   GObjectClass *gobject_class = (GObjectClass *) klass;
   GstElementClass *gstelement_class = (GstElementClass *) klass;
   GstVideoAggregatorClass *videoaggregator_class =
@@ -1971,15 +2238,18 @@ gst_rga_compositor_class_init (GstRgaCompositorClass * klass)
   gst_type_mark_as_plugin_api (GST_TYPE_COMPOSITOR_PAD, (GstPluginAPIFlags)0);
   gst_type_mark_as_plugin_api (GST_TYPE_COMPOSITOR_OPERATOR, (GstPluginAPIFlags)0);
   gst_type_mark_as_plugin_api (GST_TYPE_COMPOSITOR_BACKGROUND, (GstPluginAPIFlags)0);
+  /*Debug*/GST_DEBUG("class init success");
 }
 
 static void
 gst_rga_compositor_init (GstRgaCompositor * self)
 {
+  /*Debug*/GST_DEBUG("rgacompositor init");
   /* initialize variables */
   self->background = DEFAULT_BACKGROUND;
   self->zero_size_is_unscaled = DEFAULT_ZERO_SIZE_IS_UNSCALED;
   self->max_threads = DEFAULT_MAX_THREADS;
+  /*Debug*/GST_DEBUG("rgacompositor init success");
 
 }
 

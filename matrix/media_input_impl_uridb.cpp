@@ -8,8 +8,7 @@
 namespace mmx {
 
 MediaInputImplUridb::MediaInputImplUridb()
-  : bin_(nullptr)
-  , source_(nullptr)
+  : source_(nullptr)
   , video_cvt_(nullptr)
   , video_scale_(nullptr)
   , video_caps_(nullptr)
@@ -33,9 +32,6 @@ gint MediaInputImplUridb::init()
   do {
     ALOG_BREAK_IF(uri_.empty());
 
-    bin_ = gst_bin_new(name_.c_str());
-    ALOG_BREAK_IF(!bin_);
-
     source_ = gst_element_factory_make("uridecodebin", "InputUriSource");
     ALOG_BREAK_IF(!source_);
 
@@ -57,8 +53,6 @@ gint MediaInputImplUridb::init()
     // fakequeue_ = gst_element_factory_make("queue", "UriFakeQueue");
     // ALOG_BREAK_IF(!fakequeue_);
 
-    pad_manager_ = std::make_shared<IGhostPadManager>(bin_, "video_src");
-
     g_object_set(G_OBJECT(source_),
             "uri", uri_.c_str(),
             // "uri", "v4l2:///dev/video0",
@@ -73,7 +67,7 @@ gint MediaInputImplUridb::init()
     //         "async", FALSE,
     //         NULL);
     GstCaps *caps = gst_caps_new_simple("video/x-raw",
-            "format", G_TYPE_STRING, "RGBA",
+            "format", G_TYPE_STRING, "NV12",
             "width", G_TYPE_INT, width_,
             "height", G_TYPE_INT, height_,
             // "framerate", GST_TYPE_FRACTION, 30, 1,
@@ -182,12 +176,7 @@ string MediaInputImplUridb::get_info()
   return oss.str();
 }
 
-GstElement* MediaInputImplUridb::get_bin()
-{
-  return bin_;
-}
-
-GstPad* MediaInputImplUridb::get_request_pad(bool is_video)
+GstPad* MediaInputImplUridb::get_request_pad(const ReqPadInfo &info)
 {
   ALOG_TRACE;
   GstPad *pad = nullptr;
@@ -196,7 +185,7 @@ GstPad* MediaInputImplUridb::get_request_pad(bool is_video)
     // lock_.lock();
     ALOG_BREAK_IF(state_ == kStreamStateInvalid);
 
-    if (is_video) {
+    if (info.is_video_) {
       pad = inter_get_video_pad();
     } else {
       // TODO
@@ -295,7 +284,7 @@ void MediaInputImplUridb::on_uridb_element_added(GstElement *obj, GstElement *el
   if (factory) {
     if (g_strcmp0(gst_plugin_feature_get_name(factory), "mppvideodec") == 0) {
       g_object_set(elem,
-              "format", 11, // RGBA:11 RGB:15 BGR:16
+              "format", 23, // RGBA:11 RGB:15 BGR:16 NV12:23
               "width", self->width_,
               "height", self->height_,
               "dma-feature", TRUE,
@@ -349,7 +338,7 @@ GstPad* MediaInputImplUridb::inter_get_video_pad()
 
     GstPad *queue_src_pad = gst_element_get_static_pad(new_queue, "src");
     if (queue_src_pad) {
-      new_pad = pad_manager_->add_pad(queue_src_pad);
+      new_pad = vpad_mngr_->add_pad(queue_src_pad);
       gst_object_unref(queue_src_pad);
     } else {
       ALOGD("Failed to get src pad");
@@ -366,6 +355,82 @@ GstPad* MediaInputImplUridb::inter_get_video_pad()
 
   return new_pad;
 }
+// GstPad* MediaInputImplUridb::inter_get_video_pad()
+// {
+//   ALOG_TRACE;
+//   GstElement *new_queue;
+//   GstElement *new_scale;
+//   GstElement *new_rate;
+//   GstElement *new_caps;
+//   GstPad *new_pad;
+
+//   do {
+//     ALOG_BREAK_IF(state_ == kStreamStateInvalid);
+
+//     new_queue = gst_element_factory_make("queue", nullptr);
+//     ALOG_BREAK_IF(!new_queue);
+
+//     new_scale = gst_element_factory_make("videoscale", nullptr);
+//     ALOG_BREAK_IF(!new_scale);
+
+//     new_rate = gst_element_factory_make("videorate", nullptr);
+//     ALOG_BREAK_IF(!new_rate);
+
+//     new_caps = gst_element_factory_make("capsfilter", nullptr);
+//     ALOG_BREAK_IF(!new_caps);
+
+//     gst_bin_add_many(GST_BIN(bin_), new_queue, new_scale, new_rate, new_caps, NULL);
+//     if (!gst_element_link_many(new_queue, new_scale, new_rate, new_caps, NULL)) {
+//       ALOGD("Failed to link queue -> new_scale -> new_rate -> new_caps");
+//       // return nullptr;
+//     }
+
+//     GstCaps *caps = gst_caps_new_simple("video/x-raw",
+//             // "format", G_TYPE_STRING, "RGBA",
+//             // "width", G_TYPE_INT, 1920,
+//             // "height", G_TYPE_INT, 1080,
+//             "framerate", GST_TYPE_FRACTION, 30, 1, // 30fps
+//             NULL);
+//     if (caps) {
+//       g_object_set(G_OBJECT(new_caps), "caps", caps, NULL);
+//       gst_caps_unref(caps);
+//     } else {
+//       ALOGD("Failed to create caps for capsfilter");
+//     }
+//     // g_object_set(G_OBJECT(new_queue),
+//     //         // "max-size-buffers", 3,
+//     //         // "max-size-bytes", 0,
+//     //         // "max-size-time", 0,
+//     //         "leaky", 2, // 0-no 1-upstream 2-downstream
+//     //         NULL);
+
+//     GstPad *tee_src_pad = gst_element_get_request_pad(video_tee_, "src_%u");
+//     GstPad *queue_sink_pad = gst_element_get_static_pad(new_queue, "sink");
+//     if (gst_pad_link(tee_src_pad, queue_sink_pad) != GST_PAD_LINK_OK) {
+//       ALOGD("Failed to link tee src pad to queue sink pad");
+//     }
+//     gst_object_unref(tee_src_pad);
+//     gst_object_unref(queue_sink_pad);
+
+//     GstPad *caps_src_pad = gst_element_get_static_pad(new_caps, "src");
+//     if (caps_src_pad) {
+//       new_pad = vpad_mngr_->add_pad(caps_src_pad);
+//       gst_object_unref(caps_src_pad);
+//     } else {
+//       ALOGD("Failed to get src pad");
+//     }
+
+//     // if (!prober_) {
+//     //   prober_ = std::make_shared<IPadProber>(
+//     //           new_pad, GST_PAD_PROBE_TYPE_BUFFER, deffunc_videoframe_info);
+//     // }
+
+//     gst_element_sync_state_with_parent(new_queue);
+//     video_queue_.emplace(GST_PAD_NAME(new_pad), new_queue);
+//   } while(0);
+
+//   return new_pad;
+// }
 
 /**
  * 创建视频流处理

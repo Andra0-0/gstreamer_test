@@ -6,6 +6,7 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include "ipad_prober.h"
 
 namespace mmx {
 
@@ -44,27 +45,30 @@ struct VideomixConfig {
   string          stream_name_;
 };
 
+enum VideomixUsage {
+  kVideomixGlvm = 0,
+  kVideomixRgac,
+};
+
 class VideoMixer {
 public:
+  static VideoMixerPtr create(VideomixUsage usage);
+
   VideoMixer();
 
-  ~VideoMixer();
+  virtual ~VideoMixer();
 
-  gint init();
+  virtual gint init() = 0;
 
-  gint deinit();
+  virtual gint deinit() = 0;
 
-  gint connect(VideomixConfig &cfg);
+  virtual gint connect(VideomixConfig &cfg) = 0;
 
-  gint connect_many(vector<VideomixConfig> &cfg_arr);
+  virtual gint disconnect(GstPad *src_pad) = 0;
 
-  gint disconnect(GstPad *src_pad);
+  virtual gint disconnect_all() = 0;
 
-  gint disconnect_all();
-
-  string get_info();
-
-  GstElement* get_bin() { return bin_; }
+  virtual string get_info() = 0;
 
   /**
    * @param name video_src_0 video_sink_%u
@@ -74,11 +78,13 @@ public:
   /**
    * @param name video_src_%u
    */
-  GstPad* get_request_pad(const gchar *name);
+  virtual GstPad* get_request_pad(const gchar *name) = 0;
 
-  VideomixStyle get_style_from_layout(VideomixLayout layout, gint index);
+  virtual GstElement* get_bin() { return bin_; }
 
-private:
+  virtual VideomixStyle get_style_from_layout(VideomixLayout layout, gint index);
+
+protected:
   GstElement *bin_;
   GstElement *mix_;
   /*Debug*/GstElement *cvt_;
@@ -92,6 +98,9 @@ private:
 
   gint sinkpad_cnt_;
   unordered_map<string, VideomixConfig> srcpad_umap_;
+
+  /*Debug*/IPadProbeVideoInfoPtr prober_;
+  /*Debug*/IPadProbeVideoInfoPtr prober_out_;
 };
 
 } // namespace mmx

@@ -134,6 +134,15 @@ struct _GstRgaCompositor
   GstBuffer *intermediate_frame;
   GstVideoInfo intermediate_info;
   GstVideoConverter *intermediate_convert;
+
+  GstBuffer *background_frame;
+  GstVideoInfo background_info;
+  RkrgaContext background_ctx;
+
+  // RkrgaContext *src_ctxs;
+  // gint src_ctx_n;
+  RkrgaContextVector src_;
+  RkrgaContext dst_ctx;
 };
 
 /**

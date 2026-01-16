@@ -4,9 +4,11 @@
 #include <gst/gst.h>
 #include <string>
 #include <memory>
+#include <unordered_map>
 
 #include "noncopyable.h"
 #include "imessage.h"
+#include "ighost_pad_manager.h"
 #include "3rdparty/sigslot/sigslot.h"
 
 namespace mmx {
@@ -15,7 +17,15 @@ class MediaInputIntf;
 
 using std::string;
 using std::shared_ptr;
+using std::unordered_map;
 using MediaInputIntfPtr = shared_ptr<MediaInputIntf>;
+
+struct ReqPadInfo {
+  bool is_video_;
+  gint width_;
+  gint height_;
+  gint framerate_;
+};
 
 class MediaInputIntf : public NonCopyable {
 public:
@@ -58,7 +68,7 @@ public:
   /**
    * 获取Bin加入父级
    */
-  virtual GstElement* get_bin() = 0;
+  virtual GstElement* get_bin() { return bin_; }
 
   // TODO
   // virtual GstPad* get_static_pad(const gchar *name) = 0;
@@ -66,7 +76,7 @@ public:
   /**
    * 尝试获取音视频src pad，若媒体流未准备好返回nullptr
    */
-  virtual GstPad* get_request_pad(bool is_video) = 0;
+  virtual GstPad* get_request_pad(const ReqPadInfo &info) = 0;
 
   virtual gint set_property(const IMessagePtr &msg) { return 0; }
 
@@ -93,6 +103,12 @@ protected:
   string  src_name_; // 用户命名输入源
   gint    width_; // 视频宽度
   gint    height_; // 视频高度
+
+  GstElement *bin_; // 输入源封装
+
+  unordered_map<string, ReqPadInfo> pad_info_;
+  IGhostPadManagerPtr apad_mngr_; // 输入媒体流音频连接管理
+  IGhostPadManagerPtr vpad_mngr_; // 输入媒体流视频连接管理
 };
 
 } // namespace mmx

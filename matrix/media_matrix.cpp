@@ -19,7 +19,8 @@ std::shared_ptr<MediaMatrix> MediaMatrix::instance_ = nullptr;
 
 MediaMatrix::MediaMatrix()
   : IMessageThread("MediaMatrix")
-  , is_one_stream_ready_(false)
+  , pipe_playing_(false)
+  , pipe_playpend_cnt_(0)
 {
   pipeline_ = gst_pipeline_new ("matrix-pipeline");
   bus_ = gst_element_get_bus (pipeline_);
@@ -43,9 +44,37 @@ gint MediaMatrix::init(int argc, char *argv[])
 
   do {
     MediaInputModulePtr input_module = MediaInputModule::instance();
-    mixer_ = std::make_shared<VideoMixer>();
+
+    mixer_ = VideoMixer::create(kVideomixRgac);
+    ALOG_BREAK_IF(!mixer_);
     mixer_->init();
 
+    // ==============================================
+    //           单路输入
+    // ==============================================
+    // MediaInputIntfPtr input1;
+    // MediaInputConfig cfg1;
+    // VideomixConfig vmixcfg1;
+    // vmixcfg1.index_ = 0;
+    // vmixcfg1.layout_ = VideomixLayout::kLayoutSingleScreen;
+    // vmixcfg1.style_ = mixer_->get_style_from_layout(vmixcfg1.layout_, vmixcfg1.index_);
+    // cfg1.type_ = kMediaInputHdmi;
+    // cfg1.uri_ = PATH_INPUT_HDMI_DEV;
+    // // cfg1.type_ = kMediaInputUridb;
+    // // cfg1.uri_ = "file:///home/cat/test/test.mp4";
+    // cfg1.width_ = vmixcfg1.style_.width;
+    // cfg1.height_ = vmixcfg1.style_.height;
+    // cfg1.srcname_ = "test-input";
+    // input1 = input_module->create(cfg1);
+    // inputs_.push_back(input1);
+
+    // vmixcfg1.stream_name_ = input1->name();
+    // vmixcfg1.src_pad_ = input_module->get_request_pad(input1);
+    // vmixcfgs_.push_back(vmixcfg1);
+
+    // ==============================================
+    //           三路输入
+    // ==============================================
     MediaInputIntfPtr input1;
     MediaInputConfig cfg1;
     VideomixConfig vmixcfg1;
@@ -56,6 +85,7 @@ gint MediaMatrix::init(int argc, char *argv[])
     cfg1.uri_ = PATH_INPUT_HDMI_DEV;
     // cfg1.type_ = kMediaInputUridb;
     // cfg1.uri_ = "file:///home/cat/test/test.mp4";
+    // cfg1.uri_ = "rtsp://192.168.3.137:8554/mpeg2TransportStreamTest";
     cfg1.width_ = vmixcfg1.style_.width;
     cfg1.height_ = vmixcfg1.style_.height;
     cfg1.srcname_ = "test-input";
@@ -74,9 +104,9 @@ gint MediaMatrix::init(int argc, char *argv[])
     vmixcfg2.style_ = mixer_->get_style_from_layout(vmixcfg2.layout_, vmixcfg2.index_);
 
     cfg2.type_ = kMediaInputUridb;
-    cfg2.uri_ = "rtsp://192.168.3.137:8554/h264ESVideoTest";
+    // cfg2.uri_ = "rtsp://192.168.3.137:8554/h264ESVideoTest";
     // cfg2.uri_ = "file:///home/cat/test/test.mp4";
-    // cfg2.uri_ = "rtsp://192.168.3.137:8554/mpeg2TransportStreamTest";
+    cfg2.uri_ = "rtsp://192.168.3.137:8554/mpeg2TransportStreamTest";
     cfg2.srcname_ = "test-input2";
     cfg2.width_ = vmixcfg2.style_.width;
     cfg2.height_ = vmixcfg2.style_.height;
@@ -96,8 +126,8 @@ gint MediaMatrix::init(int argc, char *argv[])
 
     cfg3.type_ = kMediaInputUridb;
     // cfg3.uri_ = "rtsp://192.168.3.137:8554/h264ESVideoTest";
-    // cfg3.uri_ = "rtsp://192.168.3.137:8554/mpeg2TransportStreamTest";
-    cfg3.uri_ = "file:///home/cat/test/test.mp4";
+    cfg3.uri_ = "rtsp://192.168.3.137:8554/mpeg2TransportStreamTest";
+    // cfg3.uri_ = "file:///home/cat/test/test.mp4";
     cfg3.srcname_ = "test-input3";
     cfg3.width_ = vmixcfg3.style_.width;
     cfg3.height_ = vmixcfg3.style_.height;
@@ -108,6 +138,9 @@ gint MediaMatrix::init(int argc, char *argv[])
     vmixcfg3.src_pad_ = input_module->get_request_pad(input3);
     vmixcfgs_.push_back(vmixcfg3);
 
+    // ==============================================
+    //           输出
+    // ==============================================
     OutputIntfPtr kmsout = std::make_shared<OutputImplKms>(OutputImplKms::HDMI_TX_0);
     outputs_.push_back(kmsout);
 
@@ -133,15 +166,40 @@ gint MediaMatrix::init(int argc, char *argv[])
       break;
     }
 
-    // 设置管道状态READY
-    ret = gst_element_set_state(pipeline_, GST_STATE_READY);
-    if (ret == GST_STATE_CHANGE_FAILURE) {
-      ALOGD("Unable to set the pipeline to the ready state.");
-      gst_object_unref (pipeline_);
-      return -1;
-    } else {
-      ALOGD("Set pipeline to ready state success");
-    }
+    IMessagePtr new_msg = std::make_shared<IMessage>(IMSG_PIPE_SET_PLAYING, this);
+    new_msg->send();
+    // for (auto it : vmixcfgs_) {
+    //     MediaInputIntfPtr indev;
+    //     for (auto in : inputs_) {
+    //       if (it.stream_name_ == in->name()) {
+    //         indev = in;
+    //         break;
+    //       }
+    //     }
+    //     it.src_pad_ = MediaInputModule::instance()->get_request_pad(indev);
+    //     if (!it.src_pad_) {
+    //       ALOGD("Error to get %s src pad", indev->name());
+    //       continue;
+    //     }
+    //     mixer_->connect(it);
+    //     if (!it.sink_pad_) {
+    //       ALOGD("Videomixer error to get sink pad");
+    //       continue;
+    //     }
+    //     if (gst_pad_link(it.src_pad_, it.sink_pad_) != GST_PAD_LINK_OK) {
+    //       ALOGD("Failed to link src pad to sink sink pad");
+    //     }
+    //   }
+
+    // // 设置管道状态READY
+    // ret = gst_element_set_state(pipeline_, GST_STATE_PLAYING);
+    // if (ret == GST_STATE_CHANGE_FAILURE) {
+    //   ALOGD("Unable to set the pipeline to the ready state.");
+    //   gst_object_unref (pipeline_);
+    //   return -1;
+    // } else {
+    //   ALOGD("Set pipeline to ready state success");
+    // }
 
     // 添加输入流到混流
     // VideomixConfig cfg;
@@ -341,41 +399,15 @@ gboolean MediaMatrix::inter_handle_bus_msg_state_change(GstBus *bus, GstMessage 
   do {
     gst_message_parse_state_changed(msg, &old_state, &new_state, &pending_state);
 
-    switch (old_state) {
-      case GST_STATE_NULL:
-        if (new_state == GST_STATE_READY) {
-          imsg = std::make_shared<IMessage>(IMSG_PIPE_NULL_TO_READY, self);
-          imsg->set_int32("old_state", old_state);
-          imsg->set_int32("new_state", new_state);
-          imsg->send();
-        }
-        break;
-      case GST_STATE_READY:
-        if (new_state == GST_STATE_PAUSED) {
-          imsg = std::make_shared<IMessage>(IMSG_PIPE_READY_TO_PAUSED, self);
-          imsg->set_int32("old_state", old_state);
-          imsg->set_int32("new_state", new_state);
-          imsg->send();
-        }
-        break;
-      case GST_STATE_PAUSED:
-        if (new_state == GST_STATE_PLAYING) {
-          imsg = std::make_shared<IMessage>(IMSG_PIPE_PAUSED_TO_PLAYING, self);
-          imsg->set_int32("old_state", old_state);
-          imsg->set_int32("new_state", new_state);
-          imsg->send();
-        }
-        break;
+    switch (new_state) {
       case GST_STATE_PLAYING:
-        if (new_state == GST_STATE_PAUSED) {
-          imsg = std::make_shared<IMessage>(IMSG_PIPE_PLAYING_TO_PAUSED, self);
-          imsg->set_int32("old_state", old_state);
-          imsg->set_int32("new_state", new_state);
-          imsg->send();
-        }
+        imsg = std::make_shared<IMessage>(IMSG_PIPE_SET_PLAYING_SUCCESS, self);
+        imsg->set_int32("old_state", old_state);
+        imsg->set_int32("new_state", new_state);
+        imsg->send();
         break;
       default:
-        ALOGD("Handle bus msg error to get state");
+        ALOGD("No bus message handle with this state change");
         break;
     }
     ALOGD("Pipeline state changed from %s to %s, pending: %s",
@@ -393,7 +425,7 @@ void MediaMatrix::handle_message(const IMessagePtr &msg)
   GstStateChangeReturn ret;
 
   do {
-    if (msg->what() == IMSG_PIPE_NULL_TO_READY) {
+    if (msg->what() == IMSG_PIPE_SET_PLAYING) {
       ALOG_BREAK_IF(inputs_.empty() || outputs_.empty());
 
       // GstPad *src_pad = mixer_->get_request_pad("video_src_0");
@@ -424,48 +456,48 @@ void MediaMatrix::handle_message(const IMessagePtr &msg)
           ALOGD("Failed to link src pad to sink sink pad");
         }
       }
-      ret = gst_element_set_state(pipeline_, GST_STATE_PAUSED);
+      ret = gst_element_set_state(pipeline_, GST_STATE_PLAYING);
       ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
 
-    } else if (msg->what() == IMSG_PIPE_READY_TO_PAUSED_PREROLL) {
-      GstState state, pending;
-      gst_element_get_state(pipeline_, &state, &pending, 0);
-      ALOGD("\e[1;31mIMSG_PIPE_READY_TO_PAUSED_PREROLL, s:%d\e[0m", state);
+      new_msg = std::make_shared<IMessage>(IMSG_PIPE_SET_PLAYING_PENDING, this);
+      new_msg->send(100000); // 100ms
 
-      if (state == GST_STATE_PLAYING) { // uridecodebin preroll, but not work
+    } else if (msg->what() == IMSG_PIPE_SET_PLAYING_PENDING) {
+      // ALOGD("MediaMatrix pipeline set playing pending check");
+      if (!pipe_playing_) {
+        pipe_playpend_cnt_++;
+        if (pipe_playpend_cnt_ > 100) { // 10s timeout
+          new_msg = std::make_shared<IMessage>(IMSG_PIPE_SET_PLAYING_TIMEOUT, this);
+          new_msg->send();
+          pipe_playpend_cnt_ = 0;
+        } else {
+          new_msg = std::make_shared<IMessage>(IMSG_PIPE_SET_PLAYING_PENDING, this);
+          new_msg->send(100000); // 100ms pending check
+        }
+      } else { // pipeline set playing success
+        break;
+      }
+
+    } else if (msg->what() == IMSG_PIPE_SET_PLAYING_TIMEOUT) {
+      ALOGD("MediaMatrix pipeline set playing timeout, reset state");
+      // ret = gst_element_set_state(pipeline_, GST_STATE_NULL);
+      // ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
+
+      new_msg = std::make_shared<IMessage>(IMSG_PIPE_RESET_PLAYING, this);
+      new_msg->send();
+
+    } else if (msg->what() == IMSG_PIPE_SET_PLAYING_SUCCESS) {
+      ALOGD("MediaMatrix pipeline set playing success");
+      pipe_playing_ = true;
+
+    } else if (msg->what() == IMSG_PIPE_RESET_PLAYING) {
+      if (pipe_playing_) {
         ret = gst_element_set_state(pipeline_, GST_STATE_PAUSED);
         ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
 
         ret = gst_element_set_state(pipeline_, GST_STATE_PLAYING);
         ALOG_BREAK_IF(ret == GST_STATE_CHANGE_FAILURE);
-      } else {
-        if (!is_one_stream_ready_) {
-          /*Debug*/ALOGD("\e[1;31mMediaMatrix is one stream ready\e[0m");
-          is_one_stream_ready_ = true;
-        }
       }
-
-    } else if (msg->what() == IMSG_PIPE_READY_TO_PAUSED) {
-      ALOGD("MediaMatrix recv msg: IMSG_PIPE_READY_TO_PAUSED");
-
-      if (!is_one_stream_ready_) {
-        new_msg = std::make_shared<IMessage>(IMSG_PIPE_READY_TO_PAUSED, this);
-        new_msg->send(200000); // 200ms retry
-        break;
-      }
-      ret = gst_element_set_state(pipeline_, GST_STATE_PLAYING);
-      if (ret != GST_STATE_CHANGE_SUCCESS) {
-        ALOGD("MediaMatrix state change failed, ret: %d", ret);
-      } else {
-        ALOGD("MediaMatrix state set playing success!");
-      }
-
-    } else if (msg->what() == IMSG_PIPE_PAUSED_TO_PLAYING) {
-      ALOGD("MediaMatrix recv msg: IMSG_PIPE_PAUSED_TO_PLAYING");
-      
-    } else if (msg->what() == IMSG_PIPE_PLAYING_TO_PAUSED) {
-      ALOGD("MediaMatrix recv msg: IMSG_PIPE_PLAYING_TO_PAUSED");
-      
     }
   } while(0);
 }

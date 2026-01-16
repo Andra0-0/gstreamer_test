@@ -21,14 +21,14 @@ using std::vector;
 
 class MediaMatrix : public IMessageThread {
 public:
-  static std::shared_ptr<MediaMatrix> instance() {
+  static MediaMatrix* instance() {
     if (!instance_) {
       std::lock_guard<std::mutex> lock(inslock_);
       if (!instance_) {
         instance_ = std::make_shared<MediaMatrix>();
       }
     }
-    return instance_;
+    return instance_.get();
   }
 
   MediaMatrix();
@@ -62,7 +62,8 @@ private:
   vector<VideomixConfig> vmixcfgs_;
   std::vector<OutputIntfPtr> outputs_;
 
-  bool is_one_stream_ready_;
+  bool pipe_playing_;
+  gint pipe_playpend_cnt_;
 
   GstBus* bus_;
   thread  busmsg_handler_;

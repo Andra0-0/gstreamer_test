@@ -1,23 +1,23 @@
-#ifndef MATRIX_VIDEO_INPUT_IMPL_IMAGE_H
-#define MATRIX_VIDEO_INPUT_IMPL_IMAGE_H
+#ifndef MATRIX_VIDEO_INPUT_IMPL_RTSP_H
+#define MATRIX_VIDEO_INPUT_IMPL_RTSP_H
 
 #include <mutex>
 #include <unordered_map>
 
 #include "media_input_intf.h"
-#include "ipad_prober.h"
 #include "ighost_pad_manager.h"
+#include "ipad_prober.h"
 
 namespace mmx {
 
 using std::mutex;
 using std::unordered_map;
 
-class MediaInputImplImage : public MediaInputIntf {
+class MediaInputImplRtsp : public MediaInputIntf {
 public:
-  MediaInputImplImage();
+  MediaInputImplRtsp();
 
-  virtual ~MediaInputImplImage();
+  virtual ~MediaInputImplRtsp();
 
   virtual gint init() override;
 
@@ -41,21 +41,14 @@ protected:
 private:
   // GstElement *bin_;
   GstElement *source_;
-  GstElement *parser_;
-  GstElement *decoder_;
   GstElement *convert_;
   GstElement *srccaps_;
-  GstElement *imagefreeze_;
-  GstElement *videorate_;
   GstElement *tee_;
 
   mutex lock_;
-  // gint video_pad_cnt_;
-  // unordered_map<const char*, GstElement*> umap_queue_;
-  IPadProbeVideoInfoPtr prober_;
-  // IGhostPadManagerPtr pad_manager_;
+  /*Debug*/IPadProbeVideoInfoPtr prober_;
 };
 
 }
 
-#endif // MATRIX_VIDEO_INPUT_IMPL_IMAGE_H
+#endif // MATRIX_VIDEO_INPUT_IMPL_RTSP_H

@@ -32,9 +32,7 @@ public:
 
   virtual string get_info() override;
 
-  virtual GstElement* get_bin() override;
-
-  virtual GstPad* get_request_pad(bool is_video) override;
+  virtual GstPad* get_request_pad(const ReqPadInfo &info) override;
 
   virtual gint set_property(const IMessagePtr &msg) override;
 
@@ -58,7 +56,7 @@ protected:
 private:
   recursive_mutex lock_;
 
-  GstElement *bin_;
+  // GstElement *bin_;
   GstElement *source_;
   GstElement *video_cvt_;
   GstElement *video_scale_;
@@ -78,7 +76,7 @@ private:
   // manager pad
   // gint video_pad_cnt_;
   // vector<GstElement*> pad_array_;
-  IGhostPadManagerPtr pad_manager_;
+  // IGhostPadManagerPtr pad_manager_;
 
   bool video_linked_; // 视频流是否已经链接
 };

@@ -43,10 +43,15 @@ int main(int argc, char *argv[]) {
   g_setenv("GST_DEBUG_CONVERT_USE_RGA", "1", TRUE);
   g_setenv("GST_VIDEO_CONVERT_ONLY_RGA3", "1", TRUE);
 
+  // Gst 系统时钟
+  g_setenv("GST_CLOCK_TYPE", "system", TRUE);
+  // g_setenv("GST_USE_SYSTEM_CLOCK", "1", TRUE);
+
   // debug 环境变量
   // g_setenv("GST_DEBUG","3", TRUE);
   // g_setenv("GST_DEBUG","1,rgavideoconvert:5", TRUE);
-  g_setenv("GST_DEBUG","1", TRUE);
+  g_setenv("GST_DEBUG","1,compositor:5,rgacompositor:5,rgacompositor_rkrga:5", TRUE);
+  // g_setenv("GST_DEBUG","1,videoaggregator:5", TRUE);
   // g_setenv("GST_DEBUG_FILE","/tmp/mmdebug.log", TRUE);
   g_setenv("GST_DEBUG_DUMP_DOT_DIR", MEDIA_MATRIX_DOT_DIR, TRUE);
 

@@ -28,12 +28,14 @@ endif()
 set(
   RGA_COMPOSITOR_HEADERS
   rkrga.h
+  rga_dma_alloc.h
   rgacompositor.h
 )
 
 set(
   RGA_COMPOSITOR_SOURCES
   rkrga.cpp
+  rga_dma_alloc.cpp
   rgacompositor.cpp
 )
 

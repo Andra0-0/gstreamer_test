@@ -1,9 +1,12 @@
 #include "rkrga.h"
 
 #include <gst/allocators/gstdmabuf.h>
+// #include "rgacompositor.h" // GstRgaCompositorPad
 
 GST_DEBUG_CATEGORY_STATIC (gst_rgacompositor_rkrga_debug);
 #define GST_CAT_DEFAULT gst_rgacompositor_rkrga_debug
+
+timeval TestRuntime::last = {0, 0};
 
 void
 rga_compositor_init_rkrga(void)
@@ -13,7 +16,7 @@ rga_compositor_init_rkrga(void)
       "rgacompositor rkrga functions");
 
   if (imcheckHeader() <= 0) {
-    GST_WARNING("Rgacompositor use rga version: "RGA_API_VERSION);
+    GST_WARNING("Rgacompositor use rga version: %s", RGA_API_VERSION);
   }
   // c_RkRgaInit();
 }
@@ -96,31 +99,39 @@ _inter_set_rga_rect(rga_rect_t *rect,
 
   rga_set_rect(rect, 0, 0, width, height, hstride, vstride, format);
 
-  /*Debug*/GST_DEBUG("rect wh(%dx%d) wstride:%d hstride:%d",
-          rect->width, rect->height, rect->wstride, rect->hstride);
-
   return true;
 }
+
+// struct CompositePadInfo {
+//   GstVideoFrame *prepared_frame;
+//   GstRgaCompositorPad *pad;
+//   // GstCompositorBlendMode blend_mode;
+// };
 
 RkrgaContext::RkrgaContext()
   : handle_(0)
   , mapflag_(GST_MAP_FLAG_LAST)
   , buffer_(NULL)
+  , dma_fd_(-1)
+  , dma_buf_(NULL)
 {
-
+  memset(&handle_, 0, sizeof(handle_));
+  memset(&rgabuf_, 0, sizeof(rgabuf_));
 }
 
 RkrgaContext::~RkrgaContext()
 {
-  if (handle_ != 0) {
-    releasebuffer_handle(handle_);
-    handle_ = 0;
-  }
-  if (buffer_ && mapflag_ != GST_MAP_FLAG_LAST) {
-    gst_buffer_unmap(buffer_, &mapinfo_);
-    buffer_ = NULL;
-  }
+  unwrap();
 }
+
+// RkrgaContext& RkrgaContext::operator=(const RkrgaContext&other)
+// {
+//   handle_ = other.handle_;
+//   rgabuf_ = other.rgabuf_;
+//   buffer_ = other.buffer_;
+//   mapinfo_ = other.mapinfo_;
+//   mapflag_ = other.mapflag_;
+// }
 
 bool RkrgaContext::wrap(GstVideoFrame *frame, GstMapFlags flag)
 {
@@ -223,4 +234,58 @@ bool RkrgaContext::wrap(GstBuffer *buffer, GstVideoInfo *info, GstMapFlags flag)
           rect.width, rect.height, rect.format, rect.wstride, rect.hstride);
 
   return true;
+}
+
+bool RkrgaContext::wrap_dmabuf(GstVideoInfo *info)
+{
+  int ret = -1;
+  dma_bufsize_ = GST_VIDEO_INFO_SIZE(info);
+
+  ret = dma_buf_alloc(DMA_HEAP_DMA32_UNCACHED_PATH,
+          dma_bufsize_, &dma_fd_, (void **)&dma_buf_);
+  if (ret < 0) {
+    GST_WARNING("RkrgaContext alloc dmabuf failed");
+    return false;
+  }
+
+  handle_ = importbuffer_fd(dma_fd_, dma_bufsize_);
+  if (handle_ == 0) {
+    GST_WARNING("RkrgaContext import dma_fd error");
+    return false;
+  }
+
+  gint format = _inter_rgafmt_from_videofmt(info->finfo->format);
+  gint width = info->width;
+  gint height = info->height;
+  gint hstride = info->stride[0];
+  gint vstride = (info->finfo->n_planes == 1)
+          ? info->height
+          : info->offset[1] / hstride;
+
+  rga_rect_t rect;
+  if (!_inter_set_rga_rect(&rect, width, height, hstride, vstride, format)) {
+    return false;
+  }
+
+  rgabuf_ = wrapbuffer_handle(handle_,
+          rect.width, rect.height, rect.format, rect.wstride, rect.hstride);
+
+  return true;
+}
+
+void RkrgaContext::unwrap()
+{
+// /*Debug*/GST_DEBUG("unwrap");
+  if (handle_ != 0) {
+    releasebuffer_handle(handle_);
+    handle_ = 0;
+  }
+  if (buffer_ && mapflag_ != GST_MAP_FLAG_LAST) {
+    gst_buffer_unmap(buffer_, &mapinfo_);
+    buffer_ = NULL;
+  }
+  if (dma_fd_ > 0) {
+    dma_buf_free(dma_bufsize_, &dma_fd_, dma_buf_);
+    dma_fd_ = -1;
+  }
 }

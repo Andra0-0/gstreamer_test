@@ -86,7 +86,7 @@ gint InputPadSwitch::connect(const MediaInputIntfPtr &stream, StreamType type)
     sink_pad = gst_element_get_request_pad(selector_, sink_pad_name.c_str());
     ALOG_BREAK_IF(!sink_pad);
 
-    src_pad = stream->get_request_pad(true);
+    src_pad = stream->get_request_pad({true, 1920, 1080, 30});
     if (!src_pad) {
       ALOGD("Failed to request src pad from %s", stream->name());
       break;
@@ -156,7 +156,7 @@ gint InputPadSwitch::reconnect(const MediaInputIntfPtr &stream, StreamType type)
       break;
     }
 
-    src_pad = stream->get_request_pad(true);
+    src_pad = stream->get_request_pad({true, 1920, 1080, 30});
     if (!src_pad) {
       ALOGD("Failed to request src pad from %s", stream->name());
       break;
@@ -377,7 +377,7 @@ void MediaInputModule::handle_message(const IMessagePtr &msg)
       ALOG_BREAK_IF(!msg->find_int32("id", id));
       // gst_element_sync_state_with_parent(indev_array_[id]->get_bin());
       IMessagePtr imsg = std::make_shared<IMessage>(
-              IMSG_PIPE_READY_TO_PAUSED_PREROLL, MediaMatrix::instance().get());
+              IMSG_PIPE_RESET_PLAYING, MediaMatrix::instance());
       imsg->send();
     } else if (msg->what() == IMSG_INPUT_DEVICE_RETRY) {
       ALOG_BREAK_IF(!msg->find_int32("id", id));

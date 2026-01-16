@@ -4,10 +4,16 @@
 #include "output_intf.h"
 #include "ipad_prober.h"
 
+#include <string>
+
 extern "C" {
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 }
+
+namespace mmx {
+
+using std::string;
 
 class OutputImplKms : public OutputIntf {
 public:
@@ -19,9 +25,14 @@ public:
   struct DRM {
     DRM(const char *device);
     ~DRM();
-    int fd;
-    drmModeRes *res;
-    drmModePlaneRes *plane_res;
+
+    bool init();
+    void deinit();
+
+    int fd_;
+    string device_;
+    drmModeRes *res_;
+    drmModePlaneRes *plane_res_;
   };
 
   explicit OutputImplKms(hdmi_tx_port port);
@@ -47,7 +58,9 @@ private:
 
   std::unique_ptr<DRM> p_drm_;
 
-  /*Debug*///mmx::IPadProberPtr prober_;
+  /*Debug*/mmx::IPadProbeVideoInfoPtr prober_;
 };
+
+} // namespace mmx
 
 #endif // OUTPUT_IMPL_KMS_H

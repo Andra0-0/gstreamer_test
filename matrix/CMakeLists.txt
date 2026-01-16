@@ -10,6 +10,8 @@ set(
   imessage_thread.h
   imessage_thread_manager.h
   video_mixer.h
+  video_mixer_rgac.h
+  video_mixer_glvm.h
   output_intf.h
   output_impl_kms.h
   media_input_intf.h
@@ -30,6 +32,8 @@ set(
   imessage_thread.cpp
   imessage_thread_manager.cpp
   video_mixer.cpp
+  video_mixer_rgac.cpp
+  video_mixer_glvm.cpp
   output_impl_kms.cpp
   media_input_intf.cpp
   media_input_impl_image.cpp

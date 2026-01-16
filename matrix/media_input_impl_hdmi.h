@@ -6,6 +6,7 @@
 
 #include "media_input_intf.h"
 #include "ighost_pad_manager.h"
+#include "ipad_prober.h"
 
 namespace mmx {
 
@@ -28,9 +29,7 @@ public:
 
   virtual string get_info() override;
 
-  virtual GstElement* get_bin() override;
-
-  virtual GstPad* get_request_pad(bool is_video) override;
+  virtual GstPad* get_request_pad(const ReqPadInfo &info) override;
 
   virtual gint set_property(const IMessagePtr &msg) override;
 
@@ -40,18 +39,19 @@ protected:
   GstPad* create_video_src_pad();
 
 private:
-  GstElement *bin_;
+  // GstElement *bin_;
   GstElement *source_;
   GstElement *convert_;
   GstElement *capsfilter_;
-  GstElement *input_selector_;
+  // GstElement *input_selector_;
   GstElement *tee_;
   // GstElement *queue_;
 
   mutex lock_;
   // unordered_map<const char*, GstElement*> umap_queue_;
   // gint video_pad_cnt_;
-  IGhostPadManagerPtr pad_manager_;
+  // IGhostPadManagerPtr pad_manager_;
+  /*Debug*/IPadProbeVideoInfoPtr prober_;
 };
 
 }

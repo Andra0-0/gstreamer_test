@@ -82,8 +82,8 @@ static PipelineData* create_pipeline() {
     PipelineData *pdata = new PipelineData();
 
     // 设置GStreamer日志打印
-    // g_setenv("GST_DEBUG","1,rgacompositor:5,rgacompositor_rkrga:5", TRUE);
-    g_setenv("GST_DEBUG","1", TRUE);
+    g_setenv("GST_DEBUG","1,rgacompositor:5,rgacompositor_rkrga:5", TRUE);
+    // g_setenv("GST_DEBUG","1", TRUE);
     
     // 初始化GStreamer
     gst_init(NULL, NULL);
@@ -102,16 +102,19 @@ static PipelineData* create_pipeline() {
     
     // 创建三个视频源（这里使用测试源，实际可以替换为file、rtsp等）
     pdata->source1 = gst_element_factory_make("videotestsrc", "source1");
+    // pdata->source1 = gst_element_factory_make("uridecodebin", "source1");
     pdata->convert1 = gst_element_factory_make("videoconvert", "convert1");
     pdata->scale1 = gst_element_factory_make("videoscale", "scale1");
     pdata->capsf1 = gst_element_factory_make("capsfilter", "capsf1");
     
     pdata->source2 = gst_element_factory_make("videotestsrc", "source2");
+    // pdata->source2 = gst_element_factory_make("uridecodebin", "source2");
     pdata->convert2 = gst_element_factory_make("videoconvert", "convert2");
     pdata->scale2 = gst_element_factory_make("videoscale", "scale2");
     pdata->capsf2 = gst_element_factory_make("capsfilter", "capsf2");
     
     pdata->source3 = gst_element_factory_make("videotestsrc", "source3");
+    // pdata->source3 = gst_element_factory_make("uridecodebin", "source3");
     pdata->convert3 = gst_element_factory_make("videoconvert", "convert3");
     pdata->scale3 = gst_element_factory_make("videoscale", "scale3");
     pdata->capsf3 = gst_element_factory_make("capsfilter", "capsf3");
@@ -130,10 +133,13 @@ static PipelineData* create_pipeline() {
     g_object_set(pdata->source1, "pattern", 0, NULL);  // 雪碧
     g_object_set(pdata->source2, "pattern", 1, NULL);  // 白噪声
     g_object_set(pdata->source3, "pattern", 18, NULL); // 小球
+    // g_object_set(pdata->source1, "uri", "file:///home/cat/test/test.mp4", NULL);
+    // g_object_set(pdata->source2, "uri", "file:///home/cat/test/test.mp4", NULL);
+    // g_object_set(pdata->source3, "uri", "file:///home/cat/test/test.mp4", NULL);
 
     GstCaps *caps;
     caps = gst_caps_new_simple("video/x-raw",
-            "format", G_TYPE_STRING, "RGBA",
+            "format", G_TYPE_STRING, "NV12",
             NULL);
     if (caps) {
       g_object_set(G_OBJECT(pdata->capsf1), "caps", caps, NULL);
@@ -238,10 +244,22 @@ static void configure_layout(PipelineData *pdata) {
     configure_compositor_pad(pdata->compositor, "sink_2", 0, 360, 1280, 360);
 }
 
+PipelineData *pdata = nullptr;
+
+void signal_handler(int signum)
+{
+    GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pdata->pipeline),
+                GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-playing");
+    exit(0);
+}
+
 int main(int argc, char *argv[]) {
-    PipelineData *pdata = nullptr;
-    
+
+    signal(SIGINT, signal_handler);
+
     try {
+        g_setenv("GST_DEBUG_DUMP_DOT_DIR", "./", TRUE);
+
         // 创建并配置pipeline
         pdata = create_pipeline();
         if (!pdata) {
